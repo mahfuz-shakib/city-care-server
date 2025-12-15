@@ -8,7 +8,7 @@ const port = process.env.PORT || 3000;
 
 // firebase  key
 const admin = require("firebase-admin");
-const decoded = Buffer.from(process.env.FB_SERVICE_KEY, 'base64').toString('utf8')
+const decoded = Buffer.from(process.env.FB_SERVICE_KEY, "base64").toString("utf8");
 const serviceAccount = JSON.parse(decoded);
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
@@ -16,7 +16,12 @@ admin.initializeApp({
 
 const app = express();
 // middleware
-app.use(cors());
+app.use(
+  cors({
+    origin: ["http://localhost:5173", "http://localhost:3000"], // Allow specific origins
+    credentials: true, // Allow credentials
+  })
+);
 app.use(express.json());
 
 // token verify
@@ -166,12 +171,12 @@ async function run() {
 
     app.post("/issues", async (req, res) => {
       const issue = req.body;
-      issue.priority='normal'
-      issue.status='pending'
-      issue.createdAt= new Date()
-      issue.assignedStaff=null
-      issue.voteCount=0
-      issue.boosted=false
+      issue.priority = "normal";
+      issue.status = "pending";
+      issue.createdAt = new Date();
+      issue.assignedStaff = null;
+      issue.voteCount = 0;
+      issue.boosted = false;
       const result = await issuesCollection.insertOne(issue);
       console.log(result);
       res.send(result);
@@ -233,11 +238,9 @@ async function run() {
     //         res.send({ url: session.url })
     //     })
 
-
-
     // Send a ping to confirm a successful connection
     // await client.db("admin").command({ ping: 1 });
-   
+
     console.log("Pinged your deployment. You successfully connected to MongoDB!");
   } finally {
     // Ensures that the client will close when you finish/error
