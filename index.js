@@ -141,33 +141,44 @@ async function run() {
     //   res.send(result);
     // });
 
-    // app.get("/issues", async (req, res) => {
-    //   const email = req.query.email;
-    //   const category = req.query.category;
-    //   const query = {};
-    //   if (email) {
-    //     query.email = email;
-    //   } else if (category && category != "All Categories") {
-    //     query.category = category;
-    //   }
-    //   const cursor = productsCollection.find(query).sort({
-    //     date: -1,
-    //   });
-    //   const result = await cursor.toArray();
-    //   res.send(result);
-    // });
-    // app.get("/search", async (req, res) => {
-    //   const search = req.query.search;
-    //   const query = { name: { $regex: search, $options: "i" } };
-    //   const result = await productsCollection.find(query).toArray();
-    //   res.send(result);
-    // });
-    // app.get("/products/:productId", async (req, res) => {
-    //   const id = req.params.productId;
-    //   const query = { _id: new ObjectId(id) };
-    //   const result = await productsCollection.findOne(query);
-    //   res.send(result);
-    // });
+    app.get("/issues", async (req, res) => {
+      const {email,category,status,priority,search} = req.query;
+      // const category = req.query.category;
+      const query = {};
+      if (email) {
+        console.log(email)
+        query.reporter = email;
+      } 
+      if (category) {
+        query.category = category;
+      }
+      if (status) {
+        query.status = status;
+      } 
+      if (priority) {
+        query.priority = priority;
+      }
+      if (search) {
+        query.$or=[
+          {title:{regex:search,$options:'i'}},
+          {category:{regex:search,$options:'i'}},
+          {location:{regex:search,$options:'i'}},
+        ]
+      }
+      console.log(query);
+      const cursor = issuesCollection.find(query).sort({
+        date: -1,
+      });
+      const result = await cursor.toArray();
+      res.send(result);
+    });
+   
+    app.get("/issues/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await issuesCollection.findOne(query);
+      res.send(result);
+    });
 
     app.post("/issues", async (req, res) => {
       const issue = req.body;
