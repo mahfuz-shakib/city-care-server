@@ -181,6 +181,7 @@ console.log("reporter: ",email);
       const query = { _id: new ObjectId(id) };
       const result = await issuesCollection.findOne(query);
       res.send(result);
+      // console.log(result);
     });
 
     app.post("/issues", async (req, res) => {
