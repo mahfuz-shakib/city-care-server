@@ -62,6 +62,7 @@ async function run() {
     const cityCare = client.db("cityCare");
     const usersCollection = cityCare.collection("users");
     const issuesCollection = cityCare.collection("issues");
+    const upvotesCollection = cityCare.collection("upvotes");
 
     // admin verification
     const verifyAdmin = async (req, res, next) => {
@@ -142,28 +143,28 @@ async function run() {
     // });
 
     app.get("/issues", async (req, res) => {
-      const {email,category,status,priority,search} = req.query;
+      const { email, category, status, priority, search } = req.query;
       // const category = req.query.category;
       const query = {};
       if (email) {
-        console.log(email)
+        console.log(email);
         query.reporter = email;
-      } 
+      }
       if (category) {
         query.category = category;
       }
       if (status) {
         query.status = status;
-      } 
+      }
       if (priority) {
         query.priority = priority;
       }
       if (search) {
-        query.$or=[
-          {title:{regex:search,$options:'i'}},
-          {category:{regex:search,$options:'i'}},
-          {location:{regex:search,$options:'i'}},
-        ]
+        query.$or = [
+          { title: { regex: search, $options: "i" } },
+          { category: { regex: search, $options: "i" } },
+          { location: { regex: search, $options: "i" } },
+        ];
       }
       console.log(query);
       const cursor = issuesCollection.find(query).sort({
@@ -172,7 +173,7 @@ async function run() {
       const result = await cursor.toArray();
       res.send(result);
     });
-   
+
     app.get("/issues/:id", async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
@@ -186,9 +187,67 @@ async function run() {
       issue.status = "pending";
       issue.createdAt = new Date();
       issue.assignedStaff = null;
-      issue.voteCount = 0;
+      issue.upvotes = [];
       issue.boosted = false;
       const result = await issuesCollection.insertOne(issue);
+      console.log(result);
+      res.send(result);
+    });
+    app.patch("/issues/:id", async (req, res) => {
+      const id = req.params.id;
+      const { email, updateTopic, updateInfo } = req.body;
+      console.log({ email, updateInfo, updateTopic });
+      const query = { _id: new ObjectId(id) };
+      console.log(query);
+      let update;
+      if (updateTopic == "upvote") {
+        update = {
+          $set: {
+            upvotes: updateInfo,
+          },
+        };
+        console.log(update);
+        const result = await issuesCollection.updateOne(query, update);
+        console.log(result);
+        res.send(result);
+      }
+    });
+
+    app.get("/upvotes", async (req, res) => {
+      const { email, issueId } = req.query;
+      const query = {};
+      const idQuery = {};
+      if (email) {
+        query.email = email;
+      }
+      if (issueId) {
+        query.issueId = issueId;
+        idQuery.issueId = issueId;
+      }
+      // console.log("query: ", query, idQuery);
+      const allVotes = await upvotesCollection.find(idQuery).toArray();
+      const myVote = await upvotesCollection.findOne(query);
+      // console.log({ allVotes, myVote });
+      res.send({ allVotes, myVote });
+    });
+
+    app.post("/upvotes", async (req, res) => {
+      const issue = req.body;
+      const result = await upvotesCollection.insertOne(issue);
+      console.log(result);
+      res.send(result);
+    });
+    app.delete("/upvotes", async (req, res) => {
+      const { email, issueId } = req.query;
+      console.log(req.query);
+      const query = {};
+      if (email) {
+        query.email = email;
+      }
+      if (issueId) {
+        query.issueId = issueId;
+      }
+      const result = await upvotesCollection.deleteOne(query);
       console.log(result);
       res.send(result);
     });
