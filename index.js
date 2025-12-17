@@ -145,9 +145,10 @@ async function run() {
     app.get("/issues", async (req, res) => {
       const { email, category, status, priority, search } = req.query;
       // const category = req.query.category;
+console.log("reporter: ",email);
       const query = {};
       if (email) {
-        console.log(email);
+        // console.log(email);
         query.reporter = email;
       }
       if (category) {
@@ -161,16 +162,17 @@ async function run() {
       }
       if (search) {
         query.$or = [
-          { title: { regex: search, $options: "i" } },
-          { category: { regex: search, $options: "i" } },
-          { location: { regex: search, $options: "i" } },
+          { title: { $regex: search, $options: "i" } },
+          { category: { $regex: search, $options: "i" } },
+          { location: { $regex: search, $options: "i" } },
         ];
       }
-      console.log(query);
+      // console.log("query here: ", query);
       const cursor = issuesCollection.find(query).sort({
         date: -1,
       });
       const result = await cursor.toArray();
+      // console.log("result: ", result);
       res.send(result);
     });
 
@@ -190,7 +192,7 @@ async function run() {
       issue.upvotes = [];
       issue.boosted = false;
       const result = await issuesCollection.insertOne(issue);
-      console.log(result);
+      // console.log(result);
       res.send(result);
     });
     app.patch("/issues/:id", async (req, res) => {
@@ -198,7 +200,7 @@ async function run() {
       const { email, updateTopic, updateInfo } = req.body;
       console.log({ email, updateInfo, updateTopic });
       const query = { _id: new ObjectId(id) };
-      console.log(query);
+      // console.log(query);
       let update;
       if (updateTopic == "upvote") {
         update = {
@@ -206,9 +208,9 @@ async function run() {
             upvotes: updateInfo,
           },
         };
-        console.log(update);
+        // console.log(update);
         const result = await issuesCollection.updateOne(query, update);
-        console.log(result);
+        // console.log(result);
         res.send(result);
       }
     });
@@ -224,22 +226,22 @@ async function run() {
         query.issueId = issueId;
         idQuery.issueId = issueId;
       }
-      // console.log("query: ", query, idQuery);
+      console.log("query: ", query, idQuery);
       const allVotes = await upvotesCollection.find(idQuery).toArray();
       const myVote = await upvotesCollection.findOne(query);
-      // console.log({ allVotes, myVote });
+      console.log("result: ",{ allVotes, myVote });
       res.send({ allVotes, myVote });
     });
 
     app.post("/upvotes", async (req, res) => {
       const issue = req.body;
       const result = await upvotesCollection.insertOne(issue);
-      console.log(result);
+      // console.log(result);
       res.send(result);
     });
     app.delete("/upvotes", async (req, res) => {
       const { email, issueId } = req.query;
-      console.log(req.query);
+      // console.log(req.query);
       const query = {};
       if (email) {
         query.email = email;
@@ -248,7 +250,7 @@ async function run() {
         query.issueId = issueId;
       }
       const result = await upvotesCollection.deleteOne(query);
-      console.log(result);
+      // console.log(result);
       res.send(result);
     });
 
