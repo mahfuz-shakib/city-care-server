@@ -117,7 +117,7 @@ async function run() {
       }
     });
     app.post("/staffs", async (req, res) => {
-      const newStaff = req.body;
+      const newStaff = req.body;0
       const email = newStaff.email;
       const query = { email: email };
       const isExisting = await staffsCollection.findOne(query);
@@ -174,7 +174,7 @@ async function run() {
     app.get("/issues", async (req, res) => {
       const { email, category, status, priority, search } = req.query;
       // const category = req.query.category;
-      console.log("reporter: ", email);
+      // console.log("reporter: ", email);
       const query = {};
       if (email) {
         // console.log(email);
@@ -229,7 +229,9 @@ async function run() {
     app.patch("/issues/:id", async (req, res) => {
       const id = req.params.id;
       const updateInfo = req.body;
+      console.log(updateInfo);
       const query = { _id: new ObjectId(id) };
+      const issue = await issuesCollection.findOne(query);
       // console.log(query);
       let updateIt;
       if (updateInfo.priority) {
@@ -241,9 +243,14 @@ async function run() {
       } else if (updateInfo.boosted) {
         updateIt = { boosted: updateInfo.boosted };
       } else {
+        if(!updateInfo.image)
+        {
+          updateInfo.image=issue.image
+        }
         updateIt = updateInfo;
       }
       updateIt.updatedAt = new Date();
+      console.log(updateIt);
       const update = {
         $set: updateIt,
       };
@@ -274,10 +281,10 @@ async function run() {
         query.issueId = issueId;
         idQuery.issueId = issueId;
       }
-      console.log("query: ", query, idQuery);
+      // console.log("query: ", query, idQuery);
       const allVotes = await upvotesCollection.find(idQuery).toArray();
       const myVote = await upvotesCollection.findOne(query);
-      console.log("result: ", { allVotes, myVote });
+      // console.log("result: ", { allVotes, myVote });
       res.send({ allVotes, myVote });
     });
     app.post("/upvotes", async (req, res) => {
@@ -306,14 +313,14 @@ async function run() {
     /*******************************/
     app.get("/timelines", async (req, res) => {
       const { issueId } = req.query;
-      console.log("timeline: ",issueId);
+      // console.log("timeline: ",issueId);
       const query = {};
       if (issueId) {
         query.issueId = issueId;
       }
       const options = { updatedAt: -1 };
       const result = await timelinesCollection.find(query).sort(options).toArray();
-      console.log(result);
+      // console.log(result);
       res.send(result);
     });
     app.post("/timelines", async (req, res) => {
