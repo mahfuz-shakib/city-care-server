@@ -65,6 +65,7 @@ async function run() {
     const issuesCollection = cityCare.collection("issues");
     const upvotesCollection = cityCare.collection("upvotes");
     const timelinesCollection = cityCare.collection("timelines");
+    const paymentsCollection = cityCare.collection("payments");
 
     // admin verification
     const verifyAdmin = async (req, res, next) => {
@@ -82,24 +83,22 @@ async function run() {
     /*******************************/
     //     user related api
     /*******************************/
-
-    // app.get("/users", async (req, res) => {
-    //   const email = req.query.email;
-    //   const query = {};
-    //   if (email) {
-    //     query.email = email;
-    //   }
-    //   const cursor = usersCollection.find(query);
-    //   const result = await cursor.toArray();
-    //   res.send(result);
-    // });
-    // app.get("/users/:userId", async (req, res) => {
-    //   const id = req.params.userId;
-    //   const query = { _id: new ObjectId(id) };
-    //   const result = await usersCollection.findOne(query);
-    //   res.send(result);
-    // });
-
+    app.get("/users", async (req, res) => {
+      const email = req.query.email;
+      const query = {};
+      if (email) {
+        query.email = email;
+      }
+      const cursor = usersCollection.find(query);
+      const result = await cursor.toArray();
+      res.send(result);
+    });
+    app.get("/users/:userId", async (req, res) => {
+      const id = req.params.userId;
+      const query = { _id: new ObjectId(id) };
+      const result = await usersCollection.findOne(query);
+      res.send(result);
+    });
     app.post("/users", async (req, res) => {
       const newUser = req.body;
       const email = newUser.email;
@@ -116,8 +115,46 @@ async function run() {
         res.send({ currentUser: result });
       }
     });
+    app.patch("/users/:userId", async (req, res) => {
+      const id = req.params.userId;
+      const updateInfo = req.body;
+      const query = { _id: new ObjectId(id) };
+      const update = {
+        $set: updateInfo,
+      };
+      const option = {};
+      const result = await usersCollection.updateOne(query, update, option);
+      res.send(result);
+    });
+    app.delete("/users/:userId", async (req, res) => {
+      const id = req.params.userId;
+      const query = { _id: new ObjectId(id) };
+      const result = await usersCollection.deleteOne(query);
+      res.send(result);
+    });
+
+    /*******************************/
+    //     staff related api
+    /*******************************/
+    app.get("/staffs", async (req, res) => {
+      const email = req.query.email;
+      const query = {};
+      if (email) {
+        query.email = email;
+      }
+      const cursor = staffsCollection.find(query);
+      const result = await cursor.toArray();
+      res.send(result);
+    });
+    app.get("/staffs/:staffId", async (req, res) => {
+      const id = req.params.staffId;
+      const query = { _id: new ObjectId(id) };
+      const result = await staffsCollection.findOne(query);
+      res.send(result);
+    });
     app.post("/staffs", async (req, res) => {
-      const newStaff = req.body;0
+      const newStaff = req.body;
+      0;
       const email = newStaff.email;
       const query = { email: email };
       const isExisting = await staffsCollection.findOne(query);
@@ -130,43 +167,23 @@ async function run() {
         res.send({ currentStaff: result });
       }
     });
-
-    // app.patch("/users/:userId", async (req, res) => {
-    //   const id = req.params.userId;
-    //   const updatedUser = req.body;
-    //   const query = { _id: new ObjectId(id) };
-    // const user = await usersCollection.findOne(query);
-
-    //   const update = {
-    //     $set: {
-    //       name: updatedUser.name || user.name,
-    //       image: updatedUser.image || user.image,
-    //       isBlocked:updatedUser.isBlocked
-    //     },
-    //   };
-    //   const option = {};
-    //   const result = await usersCollection.updateOne(query, update, option);
-    //   res.send(result);
-    // });
-
-    // app.delete("/users/:userId", async (req, res) => {
-    //   const id = req.params.userId;
-    //   const query = { _id: new ObjectId(id) };
-    //   const result = await usersCollection.deleteOne(query);
-    //   res.send(result);
-    // });
-
-    // issue related apis
-    // app.get("/latestResolved", async (req, res) => {
-    //   const cursor = productsCollection
-    //     .find()
-    //     .sort({
-    //       date: -1,
-    //     })
-    //     .limit(6);
-    //   const result = await cursor.toArray();
-    //   res.send(result);
-    // });
+    app.patch("/staffs/:staffId", async (req, res) => {
+      const id = req.params.staffId;
+      const updateInfo = req.body;
+      const query = { _id: new ObjectId(id) };
+      const update = {
+        $set: updateInfo,
+      };
+      const option = {};
+      const result = await staffsCollection.updateOne(query, update, option);
+      res.send(result);
+    });
+    app.delete("/staffs/:staffId", async (req, res) => {
+      const id = req.params.staffId;
+      const query = { _id: new ObjectId(id) };
+      const result = await usersCollection.deleteOne(query);
+      res.send(result);
+    });
 
     /*******************************/
     //     issue related api
@@ -243,9 +260,8 @@ async function run() {
       } else if (updateInfo.boosted) {
         updateIt = { boosted: updateInfo.boosted };
       } else {
-        if(!updateInfo.image)
-        {
-          updateInfo.image=issue.image
+        if (!updateInfo.image) {
+          updateInfo.image = issue.image;
         }
         updateIt = updateInfo;
       }
@@ -334,7 +350,10 @@ async function run() {
       res.send(result);
     });
 
-    // payment related apis
+    /*******************************/
+    //     payment related api
+    /*******************************/
+
     //  app.post('/payment-checkout-session', async (req, res) => {
     //         const parcelInfo = req.body;
     //         const amount = parseInt(parcelInfo.cost) * 100;
