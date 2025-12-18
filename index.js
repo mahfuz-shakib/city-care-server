@@ -61,8 +61,10 @@ async function run() {
 
     const cityCare = client.db("cityCare");
     const usersCollection = cityCare.collection("users");
+    const staffsCollection = cityCare.collection("staffs");
     const issuesCollection = cityCare.collection("issues");
     const upvotesCollection = cityCare.collection("upvotes");
+    const timelinesCollection = cityCare.collection("timelines");
 
     // admin verification
     const verifyAdmin = async (req, res, next) => {
@@ -76,7 +78,10 @@ async function run() {
 
       next();
     };
-    // user related apis
+
+    /*******************************/
+    //     user related api
+    /*******************************/
 
     // app.get("/users", async (req, res) => {
     //   const email = req.query.email;
@@ -95,27 +100,48 @@ async function run() {
     //   res.send(result);
     // });
 
-    // app.post("/users", async (req, res) => {
-    //   const newUser = req.body;
-    //   const email = newUser.email;
-    //   const query = { email: email };
-    //   const isExisting = await usersCollection.findOne(query);
-    //   if (isExisting) {
-    //     res.send({ message: "User already exist. Do not needed insert again", currentUser: isExisting });
-    //   } else {
-    //     const result = await usersCollection.insertOne(newUser);
-    //     res.send({ currentUser: result });
-    //   }
-    // });
+    app.post("/users", async (req, res) => {
+      const newUser = req.body;
+      const email = newUser.email;
+      const query = { email: email };
+      const isExisting = await usersCollection.findOne(query);
+      if (isExisting) {
+        res.send({ message: "User already exist. Do not needed insert again", currentUser: isExisting });
+      } else {
+        newUser.role = "citizen";
+        newUser.isBlocked = false;
+        newUser.isPremium = false;
+        newUser.freeReport = 3;
+        const result = await usersCollection.insertOne(newUser);
+        res.send({ currentUser: result });
+      }
+    });
+    app.post("/staffs", async (req, res) => {
+      const newStaff = req.body;
+      const email = newStaff.email;
+      const query = { email: email };
+      const isExisting = await staffsCollection.findOne(query);
+      if (isExisting) {
+        res.send({ message: "staff already exist. Do not needed create again", currentStaff: isExisting });
+      } else {
+        newStaff.role = "staff";
+        newStaff.isAvailable = true;
+        const result = await staffsCollection.insertOne(newStaff);
+        res.send({ currentStaff: result });
+      }
+    });
 
     // app.patch("/users/:userId", async (req, res) => {
     //   const id = req.params.userId;
     //   const updatedUser = req.body;
     //   const query = { _id: new ObjectId(id) };
+    // const user = await usersCollection.findOne(query);
+
     //   const update = {
     //     $set: {
-    //       name: updatedUser.name,
-    //       price: updatedUser.price,
+    //       name: updatedUser.name || user.name,
+    //       image: updatedUser.image || user.image,
+    //       isBlocked:updatedUser.isBlocked
     //     },
     //   };
     //   const option = {};
@@ -142,10 +168,13 @@ async function run() {
     //   res.send(result);
     // });
 
+    /*******************************/
+    //     issue related api
+    /*******************************/
     app.get("/issues", async (req, res) => {
       const { email, category, status, priority, search } = req.query;
       // const category = req.query.category;
-console.log("reporter: ",email);
+      console.log("reporter: ", email);
       const query = {};
       if (email) {
         // console.log(email);
@@ -189,33 +218,51 @@ console.log("reporter: ",email);
       issue.priority = "normal";
       issue.status = "pending";
       issue.createdAt = new Date();
+      issue.updatedAt = new Date();
       issue.assignedStaff = null;
-      issue.upvotes = [];
       issue.boosted = false;
       const result = await issuesCollection.insertOne(issue);
       // console.log(result);
       res.send(result);
     });
+
     app.patch("/issues/:id", async (req, res) => {
       const id = req.params.id;
-      const { email, updateTopic, updateInfo } = req.body;
-      console.log({ email, updateInfo, updateTopic });
+      const updateInfo = req.body;
       const query = { _id: new ObjectId(id) };
       // console.log(query);
-      let update;
-      if (updateTopic == "upvote") {
-        update = {
-          $set: {
-            upvotes: updateInfo,
-          },
-        };
-        // console.log(update);
-        const result = await issuesCollection.updateOne(query, update);
-        // console.log(result);
-        res.send(result);
+      let updateIt;
+      if (updateInfo.priority) {
+        updateIt = { priority: updateInfo.priority };
+      } else if (updateInfo.status) {
+        updateIt = { status: updateInfo.status };
+      } else if (updateInfo.assignedStaff) {
+        updateIt = { assignedStaff: updateInfo.assignedStaff };
+      } else if (updateInfo.boosted) {
+        updateIt = { boosted: updateInfo.boosted };
+      } else {
+        updateIt = updateInfo;
       }
+      updateIt.updatedAt = new Date();
+      const update = {
+        $set: updateIt,
+      };
+      // console.log(update);
+      const result = await issuesCollection.updateOne(query, update);
+      // console.log(result);
+      res.send(result);
     });
 
+    app.delete("/issues/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await issuesCollection.deleteOne(query);
+      res.send(result);
+    });
+
+    /*******************************/
+    //     upvote related api
+    /*******************************/
     app.get("/upvotes", async (req, res) => {
       const { email, issueId } = req.query;
       const query = {};
@@ -230,10 +277,9 @@ console.log("reporter: ",email);
       console.log("query: ", query, idQuery);
       const allVotes = await upvotesCollection.find(idQuery).toArray();
       const myVote = await upvotesCollection.findOne(query);
-      console.log("result: ",{ allVotes, myVote });
+      console.log("result: ", { allVotes, myVote });
       res.send({ allVotes, myVote });
     });
-
     app.post("/upvotes", async (req, res) => {
       const issue = req.body;
       const result = await upvotesCollection.insertOne(issue);
@@ -255,31 +301,31 @@ console.log("reporter: ",email);
       res.send(result);
     });
 
-    // app.delete("/products/:productId", async (req, res) => {
-    //   const id = req.params.productId;
-    //   const query = { _id: new ObjectId(id) };
-    //   const result = await productsCollection.deleteOne(query);
-    //   res.send(result);
-    // });
-
-    // app.patch("/products/:productId", async (req, res) => {
-    //   const id = req.params.productId;
-    //   const query = { _id: new ObjectId(id) };
-    //   const update = {
-    //     $set: {
-    //       name: req.body.name,
-    //       category: req.body.category,
-    //       price: req.body.price,
-    //       location: req.body.location,
-    //       description: req.body.description,
-    //       image: req.body.photo,
-    //       email: req.body.email,
-    //       date: req.body.date,
-    //     },
-    //   };
-    //   const result = await productsCollection.updateOne(query, update);
-    //   res.send(result);
-    // });
+    /*******************************/
+    //     timeline related api
+    /*******************************/
+    app.get("/timelines", async (req, res) => {
+      const { issueId } = req.query;
+      console.log("timeline: ",issueId);
+      const query = {};
+      if (issueId) {
+        query.issueId = issueId;
+      }
+      const options = { updatedAt: -1 };
+      const result = await timelinesCollection.find(query).sort(options).toArray();
+      console.log(result);
+      res.send(result);
+    });
+    app.post("/timelines", async (req, res) => {
+      const timelineInfo = req.body;
+      const query = { _id: new ObjectId(timelineInfo.issueId) };
+      const updatedIssue = await issuesCollection.findOne(query);
+      timelineInfo.issueStatus = updatedIssue.status;
+      timelineInfo.updatedAt = updatedIssue.updatedAt;
+      const result = await timelinesCollection.insertOne(timelineInfo);
+      console.log(result);
+      res.send(result);
+    });
 
     // payment related apis
     //  app.post('/payment-checkout-session', async (req, res) => {
