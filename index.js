@@ -71,7 +71,7 @@ async function run() {
     const verifyAdmin = async (req, res, next) => {
       const email = req.decoded_email;
       const query = { email };
-      const user = await userCollection.findOne(query);
+      const user = await usersCollection.findOne(query);
 
       if (!user || user.role !== "admin") {
         return res.status(403).send({ message: "forbidden access" });
@@ -85,9 +85,13 @@ async function run() {
     /*******************************/
     app.get("/users", async (req, res) => {
       const email = req.query.email;
+      const role = req.query.role;
       const query = {};
       if (email) {
         query.email = email;
+      }
+      if (role) {
+        query.role = role;
       }
       const cursor = usersCollection.find(query);
       const result = await cursor.toArray();
@@ -100,12 +104,45 @@ async function run() {
       res.send(result);
     });
     app.post("/users", async (req, res) => {
+      const token = req.headers.authorization;
+      console.log(token);
+      // if (token) {
+      //   // Logged-in user, check if admin
+      //   try {
+      //     const idToken = token.split(" ")[1];
+      //     const decoded = await admin.auth().verifyIdToken(idToken);
+      //     req.decoded_email = decoded.email;
+      //     const user = await usersCollection.findOne({ email: req.decoded_email });
+      //     if (user && user.role === "admin") {
+      //       // Admin creating staff
+      //       const newStaff = req.body;
+      //       const existingStaff = await usersCollection.findOne({ email: newStaff.email });
+      //       if (existingStaff) {
+      //         res.send({ message: "Staff already exists", currentStaff: existingStaff });
+      //       } else {
+      //         await admin.auth().createUser({
+      //           displayName: newStaff.displayName,
+      //           password: newStaff.password,
+      //           email: newStaff.email,
+      //           photoURL: newStaff.photoURL,
+      //         });
+      //         newStaff.role = "staff";
+      //         newStaff.isAvailable = true;
+      //         const result = await usersCollection.insertOne(newStaff);
+      //         res.send({ currentStaff: result });
+      //       }
+      //     } else {
+      //       res.status(403).send({ message: "Only admins can create staff accounts" });
+      //     }
+      //   } catch (err) {
+      //     res.status(401).send({ message: "Invalid token" });
+      //   }
+      // } else {
+      // New user registration
       const newUser = req.body;
-      const email = newUser.email;
-      const query = { email: email };
-      const isExisting = await usersCollection.findOne(query);
-      if (isExisting) {
-        res.send({ message: "User already exist. Do not needed insert again", currentUser: isExisting });
+      const existing = await usersCollection.findOne({ email: newUser.email });
+      if (existing) {
+        res.send({ message: "User already exists", currentUser: existing });
       } else {
         newUser.role = "citizen";
         newUser.isBlocked = false;
@@ -114,6 +151,7 @@ async function run() {
         const result = await usersCollection.insertOne(newUser);
         res.send({ currentUser: result });
       }
+      // }
     });
     app.patch("/users/:userId", async (req, res) => {
       const id = req.params.userId;
@@ -153,16 +191,20 @@ async function run() {
       res.send(result);
     });
     app.post("/staffs", async (req, res) => {
-      const newStaff = req.body;
-      0;
-      const email = newStaff.email;
-      const query = { email: email };
-      const isExisting = await staffsCollection.findOne(query);
+      const { displayName, email, password, photoURL } = (newStaff = req.body);
+      console.log(newStaff);
+      // const query = { email: email };
+      const isExisting = await staffsCollection.findOne({ email });
       if (isExisting) {
         res.send({ message: "staff already exist. Do not needed create again", currentStaff: isExisting });
       } else {
+        admin.auth().createUser({
+          displayName,
+          password,
+          email,
+          photoURL,
+        });
         newStaff.role = "staff";
-        newStaff.isAvailable = true;
         const result = await staffsCollection.insertOne(newStaff);
         res.send({ currentStaff: result });
       }
@@ -181,15 +223,21 @@ async function run() {
     app.delete("/staffs/:staffId", async (req, res) => {
       const id = req.params.staffId;
       const query = { _id: new ObjectId(id) };
-      const result = await usersCollection.deleteOne(query);
+      const result = await staffsCollection.deleteOne(query);
       res.send(result);
     });
 
+    // app.get("/users/:email/role", async (req, res) => {
+    //   const email = req.params.email;
+    //   const query = { email };
+    //   const user = await usersCollection.findOne(query);
+    //   res.send({ role: user?.role || "citizen" });
+    // });
     /*******************************/
     //     issue related api
     /*******************************/
     app.get("/issues", async (req, res) => {
-      const { email, category, status, priority, search } = req.query;
+      const { email, category, status, priority, search, staffEmail } = req.query;
       // const category = req.query.category;
       // console.log("reporter: ", email);
       const query = {};
@@ -206,6 +254,7 @@ async function run() {
       if (priority) {
         query.priority = priority;
       }
+      if (staffEmail) query["assignedStaff.email"] = staffEmail;
       if (search) {
         query.$or = [
           { title: { $regex: search, $options: "i" } },
@@ -213,10 +262,8 @@ async function run() {
           { location: { $regex: search, $options: "i" } },
         ];
       }
-      // console.log("query here: ", query);
-      const cursor = issuesCollection.find(query).sort({
-        date: -1,
-      });
+      console.log("query here: ", query);
+      const cursor = issuesCollection.find(query).sort({ boosted: -1, createdAt: -1 });
       const result = await cursor.toArray();
       // console.log("result: ", result);
       res.send(result);
@@ -249,7 +296,6 @@ async function run() {
       console.log(updateInfo);
       const query = { _id: new ObjectId(id) };
       const issue = await issuesCollection.findOne(query);
-      // console.log(query);
       let updateIt;
       if (updateInfo.priority) {
         updateIt = { priority: updateInfo.priority };
