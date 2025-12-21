@@ -394,13 +394,12 @@ async function run() {
 
     app.post("/boost-payment-session", async (req, res) => {
       const issueInfo = req.body;
-      const amount = parseInt(issueInfo.cost) * 100;
       const session = await stripe.checkout.sessions.create({
         line_items: [
           {
             price_data: {
               currency: "BDT",
-              unit_amount: amount,
+              unit_amount: 10000,
               product_data: {
                 name: `Please pay boosting cost for: ${issueInfo.issueTitle}`,
               },
@@ -411,6 +410,7 @@ async function run() {
         mode: "payment",
         metadata: {
           issueId: issueInfo.issueId,
+          issueTitle: issueInfo.issueTitle,
           issueImage: issueInfo.issueImage,
         },
         customer_email: issueInfo.senderEmail,
@@ -422,13 +422,13 @@ async function run() {
     });
     app.post("/subscription-payment-session", async (req, res) => {
       const userInfo = req.body;
-      const amount = parseInt(userInfo.cost) * 100;
+      console.log(userInfo)
       const session = await stripe.checkout.sessions.create({
         line_items: [
           {
             price_data: {
               currency: "BDT",
-              unit_amount: amount,
+              unit_amount: 100000,
               product_data: {
                 name: `Please pay premium subscription cost`,
               },
@@ -441,12 +441,118 @@ async function run() {
           userId: userInfo.userId,
           userImage: userInfo.photoURL,
         },
-        customer_email: issueInfo.senderEmail,
+        customer_email: userInfo.senderEmail,
         success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-cancelled`,
       });
 
       res.send({ url: session.url });
+    });
+
+    // Get payment session info
+    app.get("/payment-session-info", async (req, res) => {
+      try {
+        const { sessionId } = req.query;
+        const session = await stripe.checkout.sessions.retrieve(sessionId);
+        res.send(session);
+      } catch (error) {
+        console.error("Error retrieving session:", error);
+        res.status(500).send({ message: "Error retrieving payment session" });
+      }
+    });
+
+    // Post payment info to database
+    app.post("/payments", async (req, res) => {
+      try {
+        const paymentInfo = req.body;
+        paymentInfo.createdAt = new Date();
+
+        // Derive purpose if not provided
+        if (!paymentInfo.purpose) {
+          const md = paymentInfo.metadata || {};
+          if (md.issueId || paymentInfo.issueId) {
+            paymentInfo.purpose = 'Boost';
+          } else if (md.userId || paymentInfo.userId) {
+            paymentInfo.purpose = 'Premium Subscription';
+          } else {
+            paymentInfo.purpose = 'Unknown';
+          }
+        }
+
+        const result = await paymentsCollection.insertOne(paymentInfo);
+        // If this payment is a boost for an issue, update the issue priority
+        try {
+          const purposeLower = String(paymentInfo.purpose || '').toLowerCase();
+          const issueId = paymentInfo.issueId || (paymentInfo.metadata && paymentInfo.metadata.issueId);
+          if (purposeLower === 'boost' || purposeLower === 'Boost' || issueId) {
+            if (issueId) {
+              const query = { _id: new ObjectId(issueId) };
+              const update = {
+                $set: { priority: 'high', boosted: true, updatedAt: new Date() },
+              };
+              await issuesCollection.updateOne(query, update);
+            }
+          }
+        } catch (err) {
+          console.error('Error updating issue priority after payment:', err);
+        }
+        // If this payment is a subscription, update the user's premium status
+        try {
+          const purposeLower = String(paymentInfo.purpose || '').toLowerCase();
+          const userId = paymentInfo.userId || (paymentInfo.metadata && paymentInfo.metadata.userId);
+          if (purposeLower.includes('subscription') || purposeLower === 'premium subscription') {
+            if (userId) {
+              const userQuery = { _id: new ObjectId(userId) };
+              const userUpdate = { $set: { isPremium: true, updatedAt: new Date() } };
+              await usersCollection.updateOne(userQuery, userUpdate);
+            }
+          }
+        } catch (err) {
+          console.error('Error updating user premium status after payment:', err);
+        }
+        res.send(result);
+      } catch (error) {
+        console.error("Error saving payment info:", error);
+        res.status(500).send({ message: "Error saving payment information" });
+      }
+    });
+
+    // Get all payments for a user
+    app.get("/payments", async (req, res) => {
+      try {
+        const { email, userId } = req.query;
+        const query = {};
+        
+        if (email) {
+          query.customerEmail = email;
+        }
+        if (userId) {
+          query.userId = userId;
+        }
+        
+        const payments = await paymentsCollection.find(query).sort({ createdAt: -1 }).toArray();
+        res.send(payments);
+      } catch (error) {
+        console.error("Error retrieving payments:", error);
+        res.status(500).send({ message: "Error retrieving payments" });
+      }
+    });
+
+    // Get payment by session ID
+    app.get("/payments/:sessionId", async (req, res) => {
+      try {
+        const { sessionId } = req.params;
+        const payment = await paymentsCollection.findOne({ sessionId });
+        
+        if (!payment) {
+          return res.status(404).send({ message: "Payment not found" });
+        }
+        
+        res.send(payment);
+      } catch (error) {
+        console.error("Error retrieving payment:", error);
+        res.status(500).send({ message: "Error retrieving payment" });
+      }
     });
 
     // Send a ping to confirm a successful connection
