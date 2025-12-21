@@ -2,7 +2,8 @@ const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
-// const stripe = require('stripe')(process.env.STRIPE_SECRET);
+const stripe = require("stripe")(process.env.STRIPE_SECRET);
+
 const port = process.env.PORT || 3000;
 // const crypto = require("crypto");
 
@@ -227,22 +228,13 @@ async function run() {
       res.send(result);
     });
 
-    // app.get("/users/:email/role", async (req, res) => {
-    //   const email = req.params.email;
-    //   const query = { email };
-    //   const user = await usersCollection.findOne(query);
-    //   res.send({ role: user?.role || "citizen" });
-    // });
     /*******************************/
     //     issue related api
     /*******************************/
     app.get("/issues", async (req, res) => {
       const { email, category, status, priority, search, staffEmail } = req.query;
-      // const category = req.query.category;
-      // console.log("reporter: ", email);
       const query = {};
       if (email) {
-        // console.log(email);
         query.reporter = email;
       }
       if (category) {
@@ -400,34 +392,62 @@ async function run() {
     //     payment related api
     /*******************************/
 
-    //  app.post('/payment-checkout-session', async (req, res) => {
-    //         const parcelInfo = req.body;
-    //         const amount = parseInt(parcelInfo.cost) * 100;
-    //         const session = await stripe.checkout.sessions.create({
-    //             line_items: [
-    //                 {
-    //                     price_data: {
-    //                         currency: 'usd',
-    //                         unit_amount: amount,
-    //                         product_data: {
-    //                             name: `Please pay for: ${parcelInfo.parcelName}`
-    //                         }
-    //                     },
-    //                     quantity: 1,
-    //                 },
-    //             ],
-    //             mode: 'payment',
-    //             metadata: {
-    //                 parcelId: parcelInfo.parcelId,
-    //                 trackingId: parcelInfo.trackingId
-    //             },
-    //             customer_email: parcelInfo.senderEmail,
-    //             success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success?session_id={CHECKOUT_SESSION_ID}`,
-    //             cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-cancelled`,
-    //         })
+    app.post("/boost-payment-session", async (req, res) => {
+      const issueInfo = req.body;
+      const amount = parseInt(issueInfo.cost) * 100;
+      const session = await stripe.checkout.sessions.create({
+        line_items: [
+          {
+            price_data: {
+              currency: "BDT",
+              unit_amount: amount,
+              product_data: {
+                name: `Please pay boosting cost for: ${issueInfo.issueTitle}`,
+              },
+            },
+            quantity: 1,
+          },
+        ],
+        mode: "payment",
+        metadata: {
+          issueId: issueInfo.issueId,
+          issueImage: issueInfo.issueImage,
+        },
+        customer_email: issueInfo.senderEmail,
+        success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-cancelled`,
+      });
 
-    //         res.send({ url: session.url })
-    //     })
+      res.send({ url: session.url });
+    });
+    app.post("/subscription-payment-session", async (req, res) => {
+      const userInfo = req.body;
+      const amount = parseInt(userInfo.cost) * 100;
+      const session = await stripe.checkout.sessions.create({
+        line_items: [
+          {
+            price_data: {
+              currency: "BDT",
+              unit_amount: amount,
+              product_data: {
+                name: `Please pay premium subscription cost`,
+              },
+            },
+            quantity: 1,
+          },
+        ],
+        mode: "payment",
+        metadata: {
+          userId: userInfo.userId,
+          userImage: userInfo.photoURL,
+        },
+        customer_email: issueInfo.senderEmail,
+        success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-cancelled`,
+      });
+
+      res.send({ url: session.url });
+    });
 
     // Send a ping to confirm a successful connection
     // await client.db("admin").command({ ping: 1 });
