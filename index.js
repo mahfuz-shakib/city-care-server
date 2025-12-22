@@ -132,40 +132,7 @@ async function run() {
     });
     app.post("/users", async (req, res) => {
       const token = req.headers.authorization;
-      // console.log(token);
-      // if (token) {
-      //   // Logged-in user, check if admin
-      //   try {
-      //     const idToken = token.split(" ")[1];
-      //     const decoded = await admin.auth().verifyIdToken(idToken);
-      //     req.decoded_email = decoded.email;
-      //     const user = await usersCollection.findOne({ email: req.decoded_email });
-      //     if (user && user.role === "admin") {
-      //       // Admin creating staff
-      //       const newStaff = req.body;
-      //       const existingStaff = await usersCollection.findOne({ email: newStaff.email });
-      //       if (existingStaff) {
-      //         res.send({ message: "Staff already exists", currentStaff: existingStaff });
-      //       } else {
-      //         await admin.auth().createUser({
-      //           displayName: newStaff.displayName,
-      //           password: newStaff.password,
-      //           email: newStaff.email,
-      //           photoURL: newStaff.photoURL,
-      //         });
-      //         newStaff.role = "staff";
-      //         newStaff.isAvailable = true;
-      //         const result = await usersCollection.insertOne(newStaff);
-      //         res.send({ currentStaff: result });
-      //       }
-      //     } else {
-      //       res.status(403).send({ message: "Only admins can create staff accounts" });
-      //     }
-      //   } catch (err) {
-      //     res.status(401).send({ message: "Invalid token" });
-      //   }
-      // } else {
-      // New user registration
+      
       const newUser = req.body;
       const existing = await usersCollection.findOne({ email: newUser.email });
       if (existing) {
