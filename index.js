@@ -19,8 +19,8 @@ const app = express();
 // middleware
 app.use(
   cors({
-    origin: ["http://localhost:5173", "http://localhost:3000","http://city-care0.netlify.app/"], // Allow specific origins
-    credentials: true, // Allow credentials
+    origin: ["http://localhost:5173", "http://localhost:3000", "https://city-care0.netlify.app"],
+    credentials: true,
   })
 );
 app.use(express.json());
@@ -132,7 +132,7 @@ async function run() {
     });
     app.post("/users", async (req, res) => {
       const token = req.headers.authorization;
-      
+
       const newUser = req.body;
       const existing = await usersCollection.findOne({ email: newUser.email });
       if (existing) {
@@ -168,7 +168,7 @@ async function run() {
     /*******************************/
     //     staff related api
     /*******************************/
-    app.get("/staffs",verifyFBToken, verifyAdmin, async (req, res) => {
+    app.get("/staffs", verifyFBToken, verifyAdmin, async (req, res) => {
       const email = req.query.email;
       const query = {};
       if (email) {
@@ -249,19 +249,19 @@ async function run() {
         ];
       }
       console.log("query here: ", query);
-      
+
       // Pagination
       const pageNum = parseInt(page) || 1;
       const limitNum = parseInt(limit) || 10;
       const skip = (pageNum - 1) * limitNum;
-      
+
       // Get total count
       const total = await issuesCollection.countDocuments(query);
-      
+
       // Get paginated results
       const cursor = issuesCollection.find(query).sort({ boosted: -1, createdAt: -1 }).skip(skip).limit(limitNum);
       const result = await cursor.toArray();
-console.log("resolved: ",result)      
+      console.log("resolved: ", result);
       // Send paginated response
       res.send({
         data: result,
@@ -291,18 +291,15 @@ console.log("resolved: ",result)
       issue.assignedStaff = null;
       issue.boosted = false;
       const result = await issuesCollection.insertOne(issue);
-      
+
       // Decrement freeReport count for non-premium users
       if (issue.reporter) {
         const user = await usersCollection.findOne({ email: issue.reporter });
         if (user && !user.isPremium && user.freeReport > 0) {
-          await usersCollection.updateOne(
-            { email: issue.reporter },
-            { $inc: { freeReport: -1 } }
-          );
+          await usersCollection.updateOne({ email: issue.reporter }, { $inc: { freeReport: -1 } });
         }
       }
-      
+
       // console.log(result);
       res.send(result);
     });
@@ -444,7 +441,7 @@ console.log("resolved: ",result)
     });
     app.post("/subscription-payment-session", verifyFBToken, async (req, res) => {
       const userInfo = req.body;
-      console.log(userInfo)
+      console.log(userInfo);
       const session = await stripe.checkout.sessions.create({
         line_items: [
           {
@@ -493,45 +490,45 @@ console.log("resolved: ",result)
         if (!paymentInfo.purpose) {
           const md = paymentInfo.metadata || {};
           if (md.issueId || paymentInfo.issueId) {
-            paymentInfo.purpose = 'Boost';
+            paymentInfo.purpose = "Boost";
           } else if (md.userId || paymentInfo.userId) {
-            paymentInfo.purpose = 'Premium Subscription';
+            paymentInfo.purpose = "Premium Subscription";
           } else {
-            paymentInfo.purpose = 'Unknown';
+            paymentInfo.purpose = "Unknown";
           }
         }
 
         const result = await paymentsCollection.insertOne(paymentInfo);
         // If this payment is a boost for an issue, update the issue priority
         try {
-          const purposeLower = String(paymentInfo.purpose || '').toLowerCase();
+          const purposeLower = String(paymentInfo.purpose || "").toLowerCase();
           const issueId = paymentInfo.issueId || (paymentInfo.metadata && paymentInfo.metadata.issueId);
-          if (purposeLower === 'boost' || purposeLower === 'Boost' || issueId) {
+          if (purposeLower === "boost" || purposeLower === "Boost" || issueId) {
             if (issueId) {
               const query = { _id: new ObjectId(issueId) };
               const update = {
-                $set: { priority: 'high', boosted: true, updatedAt: new Date() },
+                $set: { priority: "high", boosted: true, updatedAt: new Date() },
               };
               await issuesCollection.updateOne(query, update);
             }
           }
         } catch (err) {
-          console.error('Error updating issue priority after payment:', err);
+          console.error("Error updating issue priority after payment:", err);
         }
         // If this payment is a subscription, update the user's premium status
         try {
-          const purposeLower = String(paymentInfo.purpose || '').toLowerCase();
+          const purposeLower = String(paymentInfo.purpose || "").toLowerCase();
           const userId = paymentInfo.userId || (paymentInfo.metadata && paymentInfo.metadata.userId);
-          if (userId || purposeLower.includes('subscription') || purposeLower === 'premium subscription') {
+          if (userId || purposeLower.includes("subscription") || purposeLower === "premium subscription") {
             if (userId) {
               const userQuery = { _id: new ObjectId(userId) };
               const userUpdate = { $set: { isPremium: true, updatedAt: new Date() } };
               const res = await usersCollection.updateOne(userQuery, userUpdate);
-              console.log(userQuery,res)
+              console.log(userQuery, res);
             }
           }
         } catch (err) {
-          console.error('Error updating user premium status after payment:', err);
+          console.error("Error updating user premium status after payment:", err);
         }
         res.send(result);
       } catch (error) {
@@ -545,13 +542,13 @@ console.log("resolved: ",result)
       try {
         const { email, userId } = req.query;
         const emailFromToken = req.decoded_email;
-        
+
         // Check if user is admin
         const user = await usersCollection.findOne({ email: emailFromToken });
         const isAdmin = user && user.role === "admin";
-        
+
         const query = {};
-        
+
         // If not admin, only show their own payments
         if (!isAdmin) {
           query.customerEmail = emailFromToken;
@@ -561,11 +558,11 @@ console.log("resolved: ",result)
             query.customerEmail = email;
           }
         }
-        
+
         if (userId) {
           query.userId = userId;
         }
-        
+
         const payments = await paymentsCollection.find(query).sort({ createdAt: -1 }).toArray();
         res.send(payments);
       } catch (error) {
@@ -579,11 +576,11 @@ console.log("resolved: ",result)
       try {
         const { sessionId } = req.params;
         const payment = await paymentsCollection.findOne({ sessionId });
-        
+
         if (!payment) {
           return res.status(404).send({ message: "Payment not found" });
         }
-        
+
         res.send(payment);
       } catch (error) {
         console.error("Error retrieving payment:", error);
