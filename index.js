@@ -168,7 +168,7 @@ async function run() {
     /*******************************/
     //     staff related api
     /*******************************/
-    app.get("/staffs", verifyFBToken, verifyAdmin, async (req, res) => {
+    app.get("/staffs", async (req, res) => {
       const email = req.query.email;
       const query = {};
       if (email) {
