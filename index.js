@@ -168,7 +168,7 @@ async function run() {
     /*******************************/
     //     staff related api
     /*******************************/
-    app.get("/staffs", async (req, res) => {
+    app.get("/staffs",verifyFBToken, verifyAdmin, async (req, res) => {
       const email = req.query.email;
       const query = {};
       if (email) {
@@ -522,11 +522,12 @@ console.log("resolved: ",result)
         try {
           const purposeLower = String(paymentInfo.purpose || '').toLowerCase();
           const userId = paymentInfo.userId || (paymentInfo.metadata && paymentInfo.metadata.userId);
-          if (purposeLower.includes('subscription') || purposeLower === 'premium subscription') {
+          if (userId || purposeLower.includes('subscription') || purposeLower === 'premium subscription') {
             if (userId) {
               const userQuery = { _id: new ObjectId(userId) };
               const userUpdate = { $set: { isPremium: true, updatedAt: new Date() } };
-              await usersCollection.updateOne(userQuery, userUpdate);
+              const res = await usersCollection.updateOne(userQuery, userUpdate);
+              console.log(userQuery,res)
             }
           }
         } catch (err) {
