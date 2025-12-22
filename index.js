@@ -19,7 +19,7 @@ const app = express();
 // middleware
 app.use(
   cors({
-    origin: ["http://localhost:5173", "http://localhost:3000"], // Allow specific origins
+    origin: ["http://localhost:5173", "http://localhost:3000","http://city-care0.netlify.app/"], // Allow specific origins
     credentials: true, // Allow credentials
   })
 );
