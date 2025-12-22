@@ -120,7 +120,7 @@ async function run() {
       }
       const cursor = usersCollection.find(query);
       const result = await cursor.toArray();
-      console.log(query,result);
+      // console.log(query,result);
 
       res.send(result);
     });
@@ -132,7 +132,7 @@ async function run() {
     });
     app.post("/users", async (req, res) => {
       const token = req.headers.authorization;
-      console.log(token);
+      // console.log(token);
       // if (token) {
       //   // Logged-in user, check if admin
       //   try {
@@ -209,7 +209,7 @@ async function run() {
       }
       const cursor = staffsCollection.find(query);
       const result = await cursor.toArray();
-      console.log(query,result);
+      // console.log(query,result);
       res.send(result);
     });
     app.get("/staffs/:staffId", async (req, res) => {
@@ -220,7 +220,7 @@ async function run() {
     });
     app.post("/staffs", verifyFBToken, verifyAdmin, async (req, res) => {
       const { displayName, email, password, photoURL } = (newStaff = req.body);
-      console.log(newStaff);
+      // console.log(newStaff);
       // const query = { email: email };
       const isExisting = await staffsCollection.findOne({ email });
       if (isExisting) {
@@ -294,7 +294,7 @@ async function run() {
       // Get paginated results
       const cursor = issuesCollection.find(query).sort({ boosted: -1, createdAt: -1 }).skip(skip).limit(limitNum);
       const result = await cursor.toArray();
-      
+console.log("resolved: ",result)      
       // Send paginated response
       res.send({
         data: result,
@@ -343,7 +343,7 @@ async function run() {
     app.patch("/issues/:id", verifyFBToken, async (req, res) => {
       const id = req.params.id;
       const updateInfo = req.body;
-      console.log(updateInfo);
+      // console.log(updateInfo);
       const query = { _id: new ObjectId(id) };
       const issue = await issuesCollection.findOne(query);
       let updateIt;
@@ -439,7 +439,7 @@ async function run() {
       timelineInfo.issueStatus = updatedIssue.status;
       timelineInfo.updatedAt = updatedIssue.updatedAt;
       const result = await timelinesCollection.insertOne(timelineInfo);
-      console.log(result);
+      // console.log(result);
       res.send(result);
     });
 
