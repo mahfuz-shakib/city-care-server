@@ -134,9 +134,10 @@ async function run() {
       const token = req.headers.authorization;
 
       const newUser = req.body;
-      const existing = await usersCollection.findOne({ email: newUser.email });
-      if (existing) {
-        res.send({ message: "User already exists", currentUser: existing });
+      const userExisting = await usersCollection.findOne({ email: newUser.email });
+      const staffExisting = await staffsCollection.findOne({ email: newUser.email });
+      if (userExisting || staffExisting) {
+        res.send({ message: "User already exists", currentUser: userExisting });
       } else {
         newUser.role = "citizen";
         newUser.isBlocked = false;
@@ -189,9 +190,10 @@ async function run() {
       const { displayName, email, password, photoURL } = (newStaff = req.body);
       // console.log(newStaff);
       // const query = { email: email };
+      const userExisting = await usersCollection.findOne({ email: newUser.email });
       const isExisting = await staffsCollection.findOne({ email });
-      if (isExisting) {
-        res.send({ message: "staff already exist. Do not needed create again", currentStaff: isExisting });
+      if (userExisting || isExisting) {
+        res.send({ message: "user already exist. Do not needed create again", currentStaff: isExisting });
       } else {
         admin.auth().createUser({
           displayName,
@@ -384,7 +386,7 @@ async function run() {
     /*******************************/
     //     timeline related api
     /*******************************/
-    app.get("/timelines", async (req, res) => {
+    app.get("/timelines",verifyFBToken, async (req, res) => {
       const { issueId } = req.query;
       // console.log("timeline: ",issueId);
       const query = {};
@@ -469,7 +471,7 @@ async function run() {
     });
 
     // Get payment session info
-    app.get("/payment-session-info", async (req, res) => {
+    app.get("/payment-session-info",verifyFBToken, async (req, res) => {
       try {
         const { sessionId } = req.query;
         const session = await stripe.checkout.sessions.retrieve(sessionId);
@@ -497,40 +499,43 @@ async function run() {
             paymentInfo.purpose = "Unknown";
           }
         }
-
-        const result = await paymentsCollection.insertOne(paymentInfo);
-        // If this payment is a boost for an issue, update the issue priority
-        try {
-          const purposeLower = String(paymentInfo.purpose || "").toLowerCase();
-          const issueId = paymentInfo.issueId || (paymentInfo.metadata && paymentInfo.metadata.issueId);
-          if (purposeLower === "boost" || purposeLower === "Boost" || issueId) {
-            if (issueId) {
-              const query = { _id: new ObjectId(issueId) };
-              const update = {
-                $set: { priority: "high", boosted: true, updatedAt: new Date() },
-              };
-              await issuesCollection.updateOne(query, update);
+        const query = { sessionId: paymentInfo.sessionId };
+        const isPaymentDone = await issuesCollection.findOne(query);
+        if (!isPaymentDone) {
+          const result = await paymentsCollection.insertOne(paymentInfo);
+          // If this payment is a boost for an issue, update the issue priority
+          try {
+            const purposeLower = String(paymentInfo.purpose || "").toLowerCase();
+            const issueId = paymentInfo.issueId || (paymentInfo.metadata && paymentInfo.metadata.issueId);
+            if (purposeLower === "boost" || purposeLower === "Boost" || issueId) {
+              if (issueId) {
+                const query = { _id: new ObjectId(issueId) };
+                const update = {
+                  $set: { priority: "high", boosted: true, updatedAt: new Date() },
+                };
+                await issuesCollection.updateOne(query, update);
+              }
             }
+          } catch (err) {
+            console.error("Error updating issue priority after payment:", err);
           }
-        } catch (err) {
-          console.error("Error updating issue priority after payment:", err);
-        }
-        // If this payment is a subscription, update the user's premium status
-        try {
-          const purposeLower = String(paymentInfo.purpose || "").toLowerCase();
-          const userId = paymentInfo.userId || (paymentInfo.metadata && paymentInfo.metadata.userId);
-          if (userId || purposeLower.includes("subscription") || purposeLower === "premium subscription") {
-            if (userId) {
-              const userQuery = { _id: new ObjectId(userId) };
-              const userUpdate = { $set: { isPremium: true, updatedAt: new Date() } };
-              const res = await usersCollection.updateOne(userQuery, userUpdate);
-              console.log(userQuery, res);
+          // If this payment is a subscription, update the user's premium status
+          try {
+            const purposeLower = String(paymentInfo.purpose || "").toLowerCase();
+            const userId = paymentInfo.userId || (paymentInfo.metadata && paymentInfo.metadata.userId);
+            if (userId || purposeLower.includes("subscription") || purposeLower === "premium subscription") {
+              if (userId) {
+                const userQuery = { _id: new ObjectId(userId) };
+                const userUpdate = { $set: { isPremium: true, updatedAt: new Date() } };
+                const res = await usersCollection.updateOne(userQuery, userUpdate);
+                console.log(userQuery, res);
+              }
             }
+          } catch (err) {
+            console.error("Error updating user premium status after payment:", err);
           }
-        } catch (err) {
-          console.error("Error updating user premium status after payment:", err);
+          res.send(result);
         }
-        res.send(result);
       } catch (error) {
         console.error("Error saving payment info:", error);
         res.status(500).send({ message: "Error saving payment information" });
@@ -572,7 +577,7 @@ async function run() {
     });
 
     // Get payment by session ID
-    app.get("/payments/:sessionId", async (req, res) => {
+    app.get("/payments/:sessionId",verifyFBToken, async (req, res) => {
       try {
         const { sessionId } = req.params;
         const payment = await paymentsCollection.findOne({ sessionId });
