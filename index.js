@@ -261,7 +261,7 @@ async function run() {
       const total = await issuesCollection.countDocuments(query);
 
       // Get paginated results
-      const cursor = issuesCollection.find(query).sort({ boosted: -1, createdAt: -1 }).skip(skip).limit(limitNum);
+      const cursor = issuesCollection.find(query).sort({ boosted: -1, createdAt: -1}).skip(skip).limit(limitNum);
       const result = await cursor.toArray();
       console.log("resolved: ", result);
       // Send paginated response
@@ -276,7 +276,7 @@ async function run() {
       });
     });
 
-    app.get("/issues/:id", verifyFBToken, async (req, res) => {
+    app.get("/issues/:id", async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await issuesCollection.findOne(query);
@@ -386,7 +386,7 @@ async function run() {
     /*******************************/
     //     timeline related api
     /*******************************/
-    app.get("/timelines",verifyFBToken, async (req, res) => {
+    app.get("/timelines", async (req, res) => {
       const { issueId } = req.query;
       // console.log("timeline: ",issueId);
       const query = {};
@@ -413,7 +413,7 @@ async function run() {
     //     payment related api
     /*******************************/
 
-    app.post("/boost-payment-session", verifyFBToken, async (req, res) => {
+    app.post("/boost-payment-session", async (req, res) => {
       const issueInfo = req.body;
       const session = await stripe.checkout.sessions.create({
         line_items: [
@@ -544,6 +544,7 @@ async function run() {
 
     // Get all payments for a user (admin can see all, users see only their own)
     app.get("/payments", verifyFBToken, async (req, res) => {
+      console.log(object);
       try {
         const { email, userId } = req.query;
         const emailFromToken = req.decoded_email;
