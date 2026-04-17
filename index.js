@@ -9,8 +9,9 @@ const port = process.env.PORT || 3000;
 
 // firebase  key
 const admin = require("firebase-admin");
-const decoded = Buffer.from(process.env.FB_SERVICE_KEY, "base64").toString("utf8");
-const serviceAccount = JSON.parse(decoded);
+// const decoded = Buffer.from(process.env.FB_SERVICE_KEY, "base64").toString("utf8");
+// const serviceAccount = JSON.parse('./city-care-firebase-adminsdk.json');
+const serviceAccount = require("./city-care-firebase-adminsdk.json");
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
@@ -21,22 +22,26 @@ app.use(
   cors({
     origin: ["http://localhost:5173", "http://localhost:3000", "https://city-care0.netlify.app"],
     credentials: true,
-  })
+  }),
 );
 app.use(express.json());
 
 // token verify
 const verifyFBToken = async (req, res, next) => {
-  const token = req.headers.authorization;
+  const tokenData = req.headers.authorization;
+  console.log(tokenData);
 
-  if (!token) {
+  if (!tokenData) {
+    console.log("tokenData nai");
     return res.status(401).send({ message: "unauthorized access" });
   }
 
   try {
-    const idToken = token.split(" ")[1];
-    const decoded = await admin.auth().verifyIdToken(idToken);
+    const token = tokenData?.split(" ")[1];
+    console.log("token: ", token);
+    const decoded = await admin.auth().verifyIdToken(token);
     console.log("decoded in the token", decoded);
+    console.log(decoded);
     req.decoded_email = decoded.email;
     next();
   } catch (err) {
@@ -250,7 +255,7 @@ async function run() {
           { location: { $regex: search, $options: "i" } },
         ];
       }
-      console.log("query here: ", query);
+      // console.log("query here: ", query);
 
       // Pagination
       const pageNum = parseInt(page) || 1;
@@ -261,9 +266,13 @@ async function run() {
       const total = await issuesCollection.countDocuments(query);
 
       // Get paginated results
-      const cursor = issuesCollection.find(query).sort({ boosted: -1, createdAt: -1}).skip(skip).limit(limitNum);
+      const cursor = issuesCollection
+        .find(query)
+        .sort({ resolvedAt: 1, boosted: -1, createdAt: -1 })
+        .skip(skip)
+        .limit(limitNum);
       const result = await cursor.toArray();
-      console.log("resolved: ", result);
+      // console.log("resolved: ", result);
       // Send paginated response
       res.send({
         data: result,
@@ -284,12 +293,14 @@ async function run() {
       // console.log(result);
     });
 
-    app.post("/issues", verifyFBToken, async (req, res) => {
+    app.post("/issues", verifyFBToken, verifyCitizen, async (req, res) => {
+      console.log(req.body);
       const issue = req.body;
       issue.priority = "normal";
       issue.status = "pending";
       issue.createdAt = new Date();
       issue.updatedAt = new Date();
+      issue.resolvedAt = null;
       issue.assignedStaff = null;
       issue.boosted = false;
       const result = await issuesCollection.insertOne(issue);
@@ -306,30 +317,33 @@ async function run() {
       res.send(result);
     });
 
-    app.patch("/issues/:id", verifyFBToken, async (req, res) => {
+    app.patch("/issues/:id", verifyFBToken, verifyCitizen, async (req, res) => {
       const id = req.params.id;
       const updateInfo = req.body;
       // console.log(updateInfo);
       const query = { _id: new ObjectId(id) };
       const issue = await issuesCollection.findOne(query);
-      let updateIt;
-      if (updateInfo.priority) {
-        updateIt = { priority: updateInfo.priority };
-      } else if (updateInfo.status) {
-        updateIt = { status: updateInfo.status };
-      } else if (updateInfo.assignedStaff) {
-        updateIt = { assignedStaff: updateInfo.assignedStaff };
-      } else if (updateInfo.boosted) {
-        updateIt = { boosted: updateInfo.boosted };
-      } else {
-        if (!updateInfo.image) {
-          updateInfo.image = issue.image;
-        }
-        updateIt = updateInfo;
+      // let updateIt;
+      // if (updateInfo.priority) {
+      //   updateIt = { priority: updateInfo.priority };
+      // } else if (updateInfo.status) {
+      //   updateIt = { status: updateInfo.status };
+      // } else if (updateInfo.assignedStaff) {
+      //   updateIt = { assignedStaff: updateInfo.assignedStaff };
+      // } else if (updateInfo.boosted) {
+      //   updateIt = { boosted: updateInfo.boosted };
+      // } else {
+      if (!updateInfo.image) {
+        updateInfo.image = issue.image;
       }
-      updateIt.updatedAt = new Date();
+      //   updateIt = updateInfo;
+      // }
+      if (updateInfo.status && updateInfo.status === "resolved") {
+        updateInfo.resolvedAt = new Date();
+      }
+      updateInfo.updatedAt = new Date();
       const update = {
-        $set: updateIt,
+        $set: updateInfo,
       };
       const result = await issuesCollection.updateOne(query, update);
       res.send(result);
@@ -410,7 +424,7 @@ async function run() {
     });
 
     /*******************************/
-    //     payment related api
+    // payment related api for stripe
     /*******************************/
 
     app.post("/boost-payment-session", async (req, res) => {
@@ -443,7 +457,7 @@ async function run() {
     });
     app.post("/subscription-payment-session", verifyFBToken, async (req, res) => {
       const userInfo = req.body;
-      console.log(userInfo);
+      console.log("subs: ", userInfo);
       const session = await stripe.checkout.sessions.create({
         line_items: [
           {
@@ -470,8 +484,8 @@ async function run() {
       res.send({ url: session.url });
     });
 
-    // Get payment session info
-    app.get("/payment-session-info",verifyFBToken, async (req, res) => {
+    // Get payment session info from stripe
+    app.get("/payment-session-info", verifyFBToken, async (req, res) => {
       try {
         const { sessionId } = req.query;
         const session = await stripe.checkout.sessions.retrieve(sessionId);
@@ -482,25 +496,26 @@ async function run() {
       }
     });
 
+    /****************************************/
+    //  payment related api for database store
+    /*****************************************/
     // Post payment info to database
     app.post("/payments", verifyFBToken, async (req, res) => {
       try {
         const paymentInfo = req.body;
         paymentInfo.createdAt = new Date();
 
-        // Derive purpose if not provided
-        if (!paymentInfo.purpose) {
-          const md = paymentInfo.metadata || {};
-          if (md.issueId || paymentInfo.issueId) {
-            paymentInfo.purpose = "Boost";
-          } else if (md.userId || paymentInfo.userId) {
-            paymentInfo.purpose = "Premium Subscription";
-          } else {
-            paymentInfo.purpose = "Unknown";
-          }
+        // Derive payment purpose
+        const md = paymentInfo.metadata || {};
+        if (md.issueId) {
+          paymentInfo.purpose = "Boost";
+        } else if (md.userId) {
+          paymentInfo.purpose = "Premium Subscription";
+        } else {
+          paymentInfo.purpose = "Unknown";
         }
         const query = { sessionId: paymentInfo.sessionId };
-        const isPaymentDone = await issuesCollection.findOne(query);
+        const isPaymentDone = await paymentsCollection.findOne(query);
         if (!isPaymentDone) {
           const result = await paymentsCollection.insertOne(paymentInfo);
           // If this payment is a boost for an issue, update the issue priority
@@ -543,12 +558,11 @@ async function run() {
     });
 
     // Get all payments for a user (admin can see all, users see only their own)
-    app.get("/payments", verifyFBToken, async (req, res) => {
-      console.log(object);
+    app.get("/payments", async (req, res) => {
       try {
         const { email, userId } = req.query;
         const emailFromToken = req.decoded_email;
-
+        console.log(email);
         // Check if user is admin
         const user = await usersCollection.findOne({ email: emailFromToken });
         const isAdmin = user && user.role === "admin";
@@ -557,11 +571,11 @@ async function run() {
 
         // If not admin, only show their own payments
         if (!isAdmin) {
-          query.customerEmail = emailFromToken;
+          query.customerEmail = email;
         } else {
           // Admin can filter by email if provided
           if (email) {
-            query.customerEmail = email;
+            query.customerEmail = emailFromToken;
           }
         }
 
@@ -578,7 +592,7 @@ async function run() {
     });
 
     // Get payment by session ID
-    app.get("/payments/:sessionId",verifyFBToken, async (req, res) => {
+    app.get("/payments/:sessionId", verifyFBToken, async (req, res) => {
       try {
         const { sessionId } = req.params;
         const payment = await paymentsCollection.findOne({ sessionId });
@@ -609,6 +623,6 @@ app.get("/", (req, res) => {
   res.send("CityCare server is running.....");
 });
 
-app.listen(port, () => {
-  console.log(`The server is running on port ${port}`);
-});
+// app.listen(port, () => {
+//   console.log(`The server is running on port ${port}`);
+// });
