@@ -5,7 +5,6 @@ const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const stripe = require("stripe")(process.env.STRIPE_SECRET);
 
 const port = process.env.PORT || 3000;
-// const crypto = require("crypto");
 
 // firebase  key
 const admin = require("firebase-admin");
@@ -18,11 +17,9 @@ admin.initializeApp({
 
 const app = express();
 // middleware
-const allowedOrigins = [
-  "http://localhost:5173",
-  "http://localhost:3000",
-  "https://city-care0.netlify.app"
-];
+app.use(express.json());
+
+const allowedOrigins = ["http://localhost:5173", "http://localhost:3000", "https://city-care0.netlify.app"];
 
 // ✅ MUST be before routes
 app.use(
@@ -36,13 +33,10 @@ app.use(
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"]
-  })
+    allowedHeaders: ["Content-Type", "Authorization"],
+  }),
 );
 
-// ✅ VERY IMPORTANT (preflight fix)
-app.options(/.*/, cors());
-app.use(express.json());
 
 // token verify
 const verifyFBToken = async (req, res, next) => {
@@ -640,7 +634,7 @@ run().catch(console.dir);
 app.get("/", (req, res) => {
   res.send("CityCare server is running.....");
 });
-
+module.exports = app;
 // app.listen(port, () => {
 //   console.log(`The server is running on port ${port}`);
 // });
