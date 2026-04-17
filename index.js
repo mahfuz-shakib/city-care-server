@@ -18,12 +18,30 @@ admin.initializeApp({
 
 const app = express();
 // middleware
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://localhost:3000",
+  "https://city-care0.netlify.app"
+];
+
+// ✅ MUST be before routes
 app.use(
   cors({
-    origin: ["http://localhost:5173", "http://localhost:3000", "https://city-care0.netlify.app"],
+    origin: function (origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(null, false); // ⚠️ don't throw error
+      }
+    },
     credentials: true,
-  }),
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"]
+  })
 );
+
+// ✅ VERY IMPORTANT (preflight fix)
+app.options(/.*/, cors());
 app.use(express.json());
 
 // token verify
