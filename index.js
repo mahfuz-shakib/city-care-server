@@ -8,9 +8,9 @@ const port = process.env.PORT || 3000;
 
 // firebase  key
 const admin = require("firebase-admin");
-const decoded = Buffer.from(process.env.FB_SERVICE_KEY, "base64").toString("utf8");
-const serviceAccount = JSON.parse(decoded);
-// const serviceAccount = require("./city-care-firebase-adminsdk.json");
+// const decoded = Buffer.from(process.env.FB_SERVICE_KEY, "base64").toString("utf8");
+// const serviceAccount = JSON.parse(decoded);
+const serviceAccount = require("./city-care-firebase-adminsdk.json");
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
@@ -32,7 +32,7 @@ app.use(
       }
     },
     credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    methods: ["GET", "POST", "PUT", "DELETE","PATCH", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
   }),
 );
@@ -205,7 +205,6 @@ async function run() {
     });
     app.post("/staffs", verifyFBToken, verifyAdmin, async (req, res) => {
       const { displayName, email, password, photoURL } = (newStaff = req.body);
-      // console.log(newStaff);
       // const query = { email: email };
       const userExisting = await usersCollection.findOne({ email: newUser.email });
       const isExisting = await staffsCollection.findOne({ email });
@@ -350,6 +349,24 @@ async function run() {
       }
       //   updateIt = updateInfo;
       // }
+      if (updateInfo.status && updateInfo.status === "resolved") {
+        updateInfo.resolvedAt = new Date();
+      }
+      updateInfo.updatedAt = new Date();
+      const update = {
+        $set: updateInfo,
+      };
+      const result = await issuesCollection.updateOne(query, update);
+      res.send(result);
+    });
+    app.patch("/issues/admin/:id", verifyFBToken, verifyAdmin, async (req, res) => {
+      const id = req.params.id;
+      const updateInfo = req.body;
+      const query = { _id: new ObjectId(id) };
+      const issue = await issuesCollection.findOne(query);
+      if (!updateInfo.image) {
+        updateInfo.image = issue.image;
+      }
       if (updateInfo.status && updateInfo.status === "resolved") {
         updateInfo.resolvedAt = new Date();
       }
@@ -570,7 +587,7 @@ async function run() {
     });
 
     // Get all payments for a user (admin can see all, users see only their own)
-    app.get("/payments", async (req, res) => {
+    app.get("/payments", verifyFBToken, async (req, res) => {
       try {
         const { email, userId } = req.query;
         const emailFromToken = req.decoded_email;
@@ -635,6 +652,6 @@ app.get("/", (req, res) => {
   res.send("CityCare server is running.....");
 });
 module.exports = app;
-// app.listen(port, () => {
-//   console.log(`The server is running on port ${port}`);
-// });
+app.listen(port, () => {
+  console.log(`The server is running on port ${port}`);
+});
