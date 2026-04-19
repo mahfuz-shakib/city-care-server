@@ -32,11 +32,10 @@ app.use(
       }
     },
     credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE","PATCH"],
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
     allowedHeaders: ["Content-Type", "Authorization"],
   }),
 );
-
 
 // token verify
 const verifyFBToken = async (req, res, next) => {
@@ -44,16 +43,13 @@ const verifyFBToken = async (req, res, next) => {
   console.log(tokenData);
 
   if (!tokenData) {
-    console.log("tokenData nai");
     return res.status(401).send({ message: "unauthorized access" });
   }
 
   try {
     const token = tokenData?.split(" ")[1];
-    console.log("token: ", token);
     const decoded = await admin.auth().verifyIdToken(token);
     console.log("decoded in the token", decoded);
-    console.log(decoded);
     req.decoded_email = decoded.email;
     next();
   } catch (err) {
@@ -90,11 +86,9 @@ async function run() {
       const email = req.decoded_email;
       const query = { email };
       const user = await usersCollection.findOne(query);
-
       if (!user || user.role !== "admin") {
         return res.status(403).send({ message: "forbidden access" });
       }
-
       next();
     };
 
@@ -102,11 +96,9 @@ async function run() {
     const verifyStaff = async (req, res, next) => {
       const email = req.decoded_email;
       const staff = await staffsCollection.findOne({ email });
-
       if (!staff) {
         return res.status(403).send({ message: "forbidden access - staff only" });
       }
-
       next();
     };
 
@@ -114,11 +106,9 @@ async function run() {
     const verifyCitizen = async (req, res, next) => {
       const email = req.decoded_email;
       const user = await usersCollection.findOne({ email });
-
       if (!user || user.role !== "citizen") {
         return res.status(403).send({ message: "forbidden access - citizen only" });
       }
-
       next();
     };
 
@@ -137,8 +127,6 @@ async function run() {
       }
       const cursor = usersCollection.find(query);
       const result = await cursor.toArray();
-      // console.log(query,result);
-
       res.send(result);
     });
     app.get("/users/:userId", async (req, res) => {
@@ -163,7 +151,7 @@ async function run() {
         const result = await usersCollection.insertOne(newUser);
         res.send({ currentUser: result });
       }
-      // }
+  
     });
     app.patch("/users/:userId", verifyFBToken, async (req, res) => {
       const id = req.params.userId;
@@ -194,7 +182,6 @@ async function run() {
       }
       const cursor = staffsCollection.find(query);
       const result = await cursor.toArray();
-      // console.log(query,result);
       res.send(result);
     });
     app.get("/staffs/:staffId", async (req, res) => {
@@ -205,7 +192,6 @@ async function run() {
     });
     app.post("/staffs", verifyFBToken, verifyAdmin, async (req, res) => {
       const { displayName, email, password, photoURL } = (newStaff = req.body);
-      // const query = { email: email };
       const userExisting = await usersCollection.findOne({ email: newUser.email });
       const isExisting = await staffsCollection.findOne({ email });
       if (userExisting || isExisting) {
@@ -266,7 +252,6 @@ async function run() {
           { location: { $regex: search, $options: "i" } },
         ];
       }
-      // console.log("query here: ", query);
 
       // Pagination
       const pageNum = parseInt(page) || 1;
@@ -283,7 +268,6 @@ async function run() {
         .skip(skip)
         .limit(limitNum);
       const result = await cursor.toArray();
-      // console.log("resolved: ", result);
       // Send paginated response
       res.send({
         data: result,
@@ -301,7 +285,6 @@ async function run() {
       const query = { _id: new ObjectId(id) };
       const result = await issuesCollection.findOne(query);
       res.send(result);
-      // console.log(result);
     });
 
     app.post("/issues", verifyFBToken, verifyCitizen, async (req, res) => {
@@ -324,31 +307,19 @@ async function run() {
         }
       }
 
-      // console.log(result);
       res.send(result);
     });
 
     app.patch("/issues/:id", verifyFBToken, verifyCitizen, async (req, res) => {
       const id = req.params.id;
       const updateInfo = req.body;
-      // console.log(updateInfo);
       const query = { _id: new ObjectId(id) };
       const issue = await issuesCollection.findOne(query);
-      // let updateIt;
-      // if (updateInfo.priority) {
-      //   updateIt = { priority: updateInfo.priority };
-      // } else if (updateInfo.status) {
-      //   updateIt = { status: updateInfo.status };
-      // } else if (updateInfo.assignedStaff) {
-      //   updateIt = { assignedStaff: updateInfo.assignedStaff };
-      // } else if (updateInfo.boosted) {
-      //   updateIt = { boosted: updateInfo.boosted };
-      // } else {
+      
       if (!updateInfo.image) {
         updateInfo.image = issue.image;
       }
-      //   updateIt = updateInfo;
-      // }
+      
       if (updateInfo.status && updateInfo.status === "resolved") {
         updateInfo.resolvedAt = new Date();
       }
@@ -399,16 +370,13 @@ async function run() {
         query.issueId = issueId;
         idQuery.issueId = issueId;
       }
-      // console.log("query: ", query, idQuery);
       const allVotes = await upvotesCollection.find(idQuery).toArray();
       const myVote = await upvotesCollection.findOne(query);
-      // console.log("result: ", { allVotes, myVote });
       res.send({ allVotes, myVote });
     });
     app.post("/upvotes", verifyFBToken, async (req, res) => {
       const issue = req.body;
       const result = await upvotesCollection.insertOne(issue);
-      // console.log(result);
       res.send(result);
     });
     app.delete("/upvotes", verifyFBToken, async (req, res) => {
@@ -438,7 +406,6 @@ async function run() {
       }
       const options = { updatedAt: -1 };
       const result = await timelinesCollection.find(query).sort(options).toArray();
-      // console.log(result);
       res.send(result);
     });
     app.post("/timelines", verifyFBToken, async (req, res) => {
@@ -638,8 +605,6 @@ async function run() {
     });
 
     // Send a ping to confirm a successful connection
-    // await client.db("admin").command({ ping: 1 });
-
     console.log("Pinged your deployment. You successfully connected to MongoDB!");
   } finally {
     // Ensures that the client will close when you finish/error
