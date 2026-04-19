@@ -151,7 +151,6 @@ async function run() {
         const result = await usersCollection.insertOne(newUser);
         res.send({ currentUser: result });
       }
-  
     });
     app.patch("/users/:userId", verifyFBToken, async (req, res) => {
       const id = req.params.userId;
@@ -315,11 +314,11 @@ async function run() {
       const updateInfo = req.body;
       const query = { _id: new ObjectId(id) };
       const issue = await issuesCollection.findOne(query);
-      
+
       if (!updateInfo.image) {
         updateInfo.image = issue.image;
       }
-      
+
       if (updateInfo.status && updateInfo.status === "resolved") {
         updateInfo.resolvedAt = new Date();
       }
@@ -381,7 +380,6 @@ async function run() {
     });
     app.delete("/upvotes", verifyFBToken, async (req, res) => {
       const { email, issueId } = req.query;
-      // console.log(req.query);
       const query = {};
       if (email) {
         query.email = email;
@@ -390,7 +388,6 @@ async function run() {
         query.issueId = issueId;
       }
       const result = await upvotesCollection.deleteOne(query);
-      // console.log(result);
       res.send(result);
     });
 
@@ -399,7 +396,6 @@ async function run() {
     /*******************************/
     app.get("/timelines", async (req, res) => {
       const { issueId } = req.query;
-      // console.log("timeline: ",issueId);
       const query = {};
       if (issueId) {
         query.issueId = issueId;
@@ -415,7 +411,6 @@ async function run() {
       timelineInfo.issueStatus = updatedIssue.status;
       timelineInfo.updatedAt = updatedIssue.updatedAt;
       const result = await timelinesCollection.insertOne(timelineInfo);
-      // console.log(result);
       res.send(result);
     });
 
