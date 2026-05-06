@@ -148,11 +148,13 @@ async function run() {
         newUser.isBlocked = false;
         newUser.isPremium = false;
         newUser.freeReport = 3;
+        newUser.reports = 0;
+        newUser.resolved = 0;
         const result = await usersCollection.insertOne(newUser);
         res.send({ currentUser: result });
       }
     });
-    app.patch("/users/:userId", verifyFBToken, async (req, res) => {
+    app.patch("/users/:userId", async (req, res) => {
       const id = req.params.userId;
       const updateInfo = req.body;
       const query = { _id: new ObjectId(id) };
@@ -163,7 +165,7 @@ async function run() {
       const result = await usersCollection.updateOne(query, update, option);
       res.send(result);
     });
-    app.delete("/users/:userId", verifyFBToken, verifyAdmin, async (req, res) => {
+    app.delete("/users/:userId", async (req, res) => {
       const id = req.params.userId;
       const query = { _id: new ObjectId(id) };
       const result = await usersCollection.deleteOne(query);
@@ -174,14 +176,31 @@ async function run() {
     //     staff related api
     /*******************************/
     app.get("/staffs", async (req, res) => {
-      const email = req.query.email;
+      const { email, department, page, limit } = req.query;
       const query = {};
       if (email) {
         query.email = email;
       }
-      const cursor = staffsCollection.find(query);
+      if (department && department !== "All Staff") {
+        query.department = department;
+      }
+
+      const limitNum = Number(limit) || 8;
+      const currentPage = Number(page) || 1;
+      const skip = (currentPage - 1) * limitNum;
+      const total = await staffsCollection.countDocuments(query);
+      console.log("query: ", query);
+      const cursor = staffsCollection.find(query).skip(skip).limit(limitNum);
       const result = await cursor.toArray();
-      res.send(result);
+      res.send({
+        data: result,
+        pagination: {
+          page: currentPage,
+          limit: limitNum,
+          total,
+          totalPages: Math.ceil(total / limitNum),
+        },
+      });
     });
     app.get("/staffs/:staffId", async (req, res) => {
       const id = req.params.staffId;
@@ -189,8 +208,8 @@ async function run() {
       const result = await staffsCollection.findOne(query);
       res.send(result);
     });
-    app.post("/staffs", verifyFBToken, verifyAdmin, async (req, res) => {
-      const { displayName, email, password, photoURL } = (newStaff = req.body);
+    app.post("/staffs", async (req, res) => {
+      const { displayName, email, password, photoURL, department } = (newStaff = req.body);
       const userExisting = await usersCollection.findOne({ email: newUser.email });
       const isExisting = await staffsCollection.findOne({ email });
       if (userExisting || isExisting) {
@@ -203,11 +222,14 @@ async function run() {
           photoURL,
         });
         newStaff.role = "staff";
+        newStaff.department = department;
+        newStaff.ratings = 0;
+        newStaff.activeTask = 0;
         const result = await staffsCollection.insertOne(newStaff);
         res.send({ currentStaff: result });
       }
     });
-    app.patch("/staffs/:staffId", verifyFBToken, verifyAdmin, async (req, res) => {
+    app.patch("/staffs/:staffId", async (req, res) => {
       const id = req.params.staffId;
       const updateInfo = req.body;
       const query = { _id: new ObjectId(id) };
@@ -218,7 +240,7 @@ async function run() {
       const result = await staffsCollection.updateOne(query, update, option);
       res.send(result);
     });
-    app.delete("/staffs/:staffId", verifyFBToken, verifyAdmin, async (req, res) => {
+    app.delete("/staffs/:staffId", async (req, res) => {
       const id = req.params.staffId;
       const query = { _id: new ObjectId(id) };
       const result = await staffsCollection.deleteOne(query);
@@ -286,7 +308,7 @@ async function run() {
       res.send(result);
     });
 
-    app.post("/issues", verifyFBToken, verifyCitizen, async (req, res) => {
+    app.post("/issues", async (req, res) => {
       console.log(req.body);
       const issue = req.body;
       issue.priority = "normal";
@@ -309,7 +331,7 @@ async function run() {
       res.send(result);
     });
 
-    app.patch("/issues/:id", verifyFBToken, verifyCitizen, async (req, res) => {
+    app.patch("/issues/:id", async (req, res) => {
       const id = req.params.id;
       const updateInfo = req.body;
       const query = { _id: new ObjectId(id) };
@@ -329,7 +351,7 @@ async function run() {
       const result = await issuesCollection.updateOne(query, update);
       res.send(result);
     });
-    app.patch("/issues/admin/:id", verifyFBToken, verifyAdmin, async (req, res) => {
+    app.patch("/issues/admin/:id", async (req, res) => {
       const id = req.params.id;
       const updateInfo = req.body;
       const query = { _id: new ObjectId(id) };
@@ -348,7 +370,7 @@ async function run() {
       res.send(result);
     });
 
-    app.delete("/issues/:id", verifyFBToken, async (req, res) => {
+    app.delete("/issues/:id", async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await issuesCollection.deleteOne(query);
@@ -373,12 +395,12 @@ async function run() {
       const myVote = await upvotesCollection.findOne(query);
       res.send({ allVotes, myVote });
     });
-    app.post("/upvotes", verifyFBToken, async (req, res) => {
+    app.post("/upvotes", async (req, res) => {
       const issue = req.body;
       const result = await upvotesCollection.insertOne(issue);
       res.send(result);
     });
-    app.delete("/upvotes", verifyFBToken, async (req, res) => {
+    app.delete("/upvotes", async (req, res) => {
       const { email, issueId } = req.query;
       const query = {};
       if (email) {
@@ -404,7 +426,7 @@ async function run() {
       const result = await timelinesCollection.find(query).sort(options).toArray();
       res.send(result);
     });
-    app.post("/timelines", verifyFBToken, async (req, res) => {
+    app.post("/timelines", async (req, res) => {
       const timelineInfo = req.body;
       const query = { _id: new ObjectId(timelineInfo.issueId) };
       const updatedIssue = await issuesCollection.findOne(query);
@@ -446,7 +468,7 @@ async function run() {
 
       res.send({ url: session.url });
     });
-    app.post("/subscription-payment-session", verifyFBToken, async (req, res) => {
+    app.post("/subscription-payment-session", async (req, res) => {
       const userInfo = req.body;
       console.log("subs: ", userInfo);
       const session = await stripe.checkout.sessions.create({
@@ -476,7 +498,7 @@ async function run() {
     });
 
     // Get payment session info from stripe
-    app.get("/payment-session-info", verifyFBToken, async (req, res) => {
+    app.get("/payment-session-info", async (req, res) => {
       try {
         const { sessionId } = req.query;
         const session = await stripe.checkout.sessions.retrieve(sessionId);
@@ -491,7 +513,7 @@ async function run() {
     //  payment related api for database store
     /*****************************************/
     // Post payment info to database
-    app.post("/payments", verifyFBToken, async (req, res) => {
+    app.post("/payments", async (req, res) => {
       try {
         const paymentInfo = req.body;
         paymentInfo.createdAt = new Date();
@@ -549,32 +571,32 @@ async function run() {
     });
 
     // Get all payments for a user (admin can see all, users see only their own)
-    app.get("/payments", verifyFBToken, async (req, res) => {
+    app.get("/payments",verifyFBToken, async (req, res) => {
       try {
         const { email, userId } = req.query;
         const emailFromToken = req.decoded_email;
-        console.log(email);
         // Check if user is admin
         const user = await usersCollection.findOne({ email: emailFromToken });
         const isAdmin = user && user.role === "admin";
-
         const query = {};
 
         // If not admin, only show their own payments
         if (!isAdmin) {
           query.customerEmail = email;
-        } else {
-          // Admin can filter by email if provided
-          if (email) {
-            query.customerEmail = emailFromToken;
-          }
         }
+        // else {
+        //   // Admin can filter by email if provided
+        //   if (email) {
+        //     query.customerEmail = emailFromToken;
+        //   }
+        // }
 
         if (userId) {
           query.userId = userId;
         }
-
+        console.log("payments: ", query);
         const payments = await paymentsCollection.find(query).sort({ createdAt: -1 }).toArray();
+        console.log(payments);
         res.send(payments);
       } catch (error) {
         console.error("Error retrieving payments:", error);
@@ -583,7 +605,7 @@ async function run() {
     });
 
     // Get payment by session ID
-    app.get("/payments/:sessionId", verifyFBToken, async (req, res) => {
+    app.get("/payments/:sessionId", async (req, res) => {
       try {
         const { sessionId } = req.params;
         const payment = await paymentsCollection.findOne({ sessionId });
