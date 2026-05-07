@@ -150,6 +150,7 @@ async function run() {
         newUser.freeReport = 3;
         newUser.reports = 0;
         newUser.resolved = 0;
+        newUser.createUser = new Date();
         const result = await usersCollection.insertOne(newUser);
         res.send({ currentUser: result });
       }
@@ -189,8 +190,7 @@ async function run() {
       const currentPage = Number(page) || 1;
       const skip = (currentPage - 1) * limitNum;
       const total = await staffsCollection.countDocuments(query);
-      console.log("query: ", query);
-      const cursor = staffsCollection.find(query).skip(skip).limit(limitNum);
+      const cursor = staffsCollection.find(query).skip(skip).limit(limitNum).sort({createdAt:-1});
       const result = await cursor.toArray();
       res.send({
         data: result,
@@ -210,23 +210,27 @@ async function run() {
     });
     app.post("/staffs", async (req, res) => {
       const { displayName, email, password, photoURL, department } = (newStaff = req.body);
-      const userExisting = await usersCollection.findOne({ email: newUser.email });
+      const userExisting = await usersCollection.findOne({ email });
       const isExisting = await staffsCollection.findOne({ email });
-      if (userExisting || isExisting) {
-        res.send({ message: "user already exist. Do not needed create again", currentStaff: isExisting });
-      } else {
-        admin.auth().createUser({
-          displayName,
-          password,
-          email,
-          photoURL,
-        });
-        newStaff.role = "staff";
-        newStaff.department = department;
-        newStaff.ratings = 0;
-        newStaff.activeTask = 0;
-        const result = await staffsCollection.insertOne(newStaff);
-        res.send({ currentStaff: result });
+      console.log(newStaff, userExisting, isExisting);
+      try {
+        if (userExisting || isExisting) {
+          res.send({ message: "user already exist. Do not needed create again", currentStaff: isExisting });
+        } else {
+          admin.auth().createUser({
+            displayName,
+            password,
+            email,
+            photoURL,
+          });
+          newStaff.role = "staff";
+          newStaff.ratings = 0;
+          newStaff.createdAt = new Date();
+          const result = await staffsCollection.insertOne(newStaff);
+          res.send({ currentStaff: result });
+        }
+      } catch (error) {
+        res.send({ error, message: "Staff creation failed." });
       }
     });
     app.patch("/staffs/:staffId", async (req, res) => {
@@ -285,7 +289,7 @@ async function run() {
       // Get paginated results
       const cursor = issuesCollection
         .find(query)
-        .sort({ resolvedAt: 1, boosted: -1, createdAt: -1 })
+        .sort({ boosted: -1,createdAt: -1,resolvedAt: 1  })
         .skip(skip)
         .limit(limitNum);
       const result = await cursor.toArray();
@@ -309,7 +313,6 @@ async function run() {
     });
 
     app.post("/issues", async (req, res) => {
-      console.log(req.body);
       const issue = req.body;
       issue.priority = "normal";
       issue.status = "pending";
@@ -571,7 +574,7 @@ async function run() {
     });
 
     // Get all payments for a user (admin can see all, users see only their own)
-    app.get("/payments",verifyFBToken, async (req, res) => {
+    app.get("/payments", verifyFBToken, async (req, res) => {
       try {
         const { email, userId } = req.query;
         const emailFromToken = req.decoded_email;
