@@ -149,7 +149,7 @@ async function run() {
         newUser.isPremium = false;
         newUser.freeReport = 3;
         newUser.reports = 0;
-        newUser.resolved = 0;
+        newUser.solved = 0;
         newUser.createUser = new Date();
         const result = await usersCollection.insertOne(newUser);
         res.send({ currentUser: result });
@@ -190,7 +190,7 @@ async function run() {
       const currentPage = Number(page) || 1;
       const skip = (currentPage - 1) * limitNum;
       const total = await staffsCollection.countDocuments(query);
-      const cursor = staffsCollection.find(query).skip(skip).limit(limitNum).sort({createdAt:-1});
+      const cursor = staffsCollection.find(query).skip(skip).limit(limitNum).sort({ createdAt: -1 });
       const result = await cursor.toArray();
       res.send({
         data: result,
@@ -225,6 +225,8 @@ async function run() {
           });
           newStaff.role = "staff";
           newStaff.ratings = 0;
+          newStaff.activeTasks = 0;
+          newStaff.resolvedTasks = 0;
           newStaff.createdAt = new Date();
           const result = await staffsCollection.insertOne(newStaff);
           res.send({ currentStaff: result });
@@ -289,7 +291,7 @@ async function run() {
       // Get paginated results
       const cursor = issuesCollection
         .find(query)
-        .sort({ boosted: -1,createdAt: -1,resolvedAt: 1  })
+        .sort({ boosted: -1, createdAt: -1, resolvedAt: 1 })
         .skip(skip)
         .limit(limitNum);
       const result = await cursor.toArray();
@@ -346,31 +348,61 @@ async function run() {
 
       if (updateInfo.status && updateInfo.status === "resolved") {
         updateInfo.resolvedAt = new Date();
+        const { resolvedTasks, email } = (await staffsCollection.findOne({ email: issue.assignedStaff.email })) || {};
+        const update = { resolvedTasks: (resolvedTasks || 0) + 1 };
+        await staffsCollection.updateOne({ email }, { $set: update });
       }
+
       updateInfo.updatedAt = new Date();
-      const update = {
-        $set: updateInfo,
-      };
-      const result = await issuesCollection.updateOne(query, update);
+      const result = await issuesCollection.updateOne(query, { $set: updateInfo });
       res.send(result);
     });
     app.patch("/issues/admin/:id", async (req, res) => {
       const id = req.params.id;
-      const updateInfo = req.body;
+      const { status, staffEmail } = req.body;
       const query = { _id: new ObjectId(id) };
       const issue = await issuesCollection.findOne(query);
-      if (!updateInfo.image) {
-        updateInfo.image = issue.image;
+      const updateInfo = {};
+      // console.log("staff: ", staffEmail);
+      try {
+        if (staffEmail) {
+          const staffInfo = await staffsCollection.findOne({ email: staffEmail });
+          updateInfo.assignedStaff = {
+            displayName: staffInfo.displayName,
+            email: staffInfo.email,
+            phone: staffInfo.phone,
+          };
+          // increase staff's assigned active task
+          const staffUpdate = {
+            activeTasks: (staffInfo.activeTasks || 0) + 1,
+          };
+          await staffsCollection.updateOne({ email: staffEmail }, { $set: staffUpdate });
+
+          // add timelime activity against issue
+          const timelineInfo = {
+            issueId: issue._id,
+            message: `Issue assigned to Staff: ${staffInfo.displayName} : ${staffEmail}`,
+            updatedBy: "Admin",
+          };
+          await timelinesCollection.insertOne(timelineInfo);
+        }
+        if (status && status === "rejected") {
+          updateInfo.status = "rejected";
+
+          // add timelime activity against issue
+          const timelineInfo = {
+            issueId: issue._id,
+            message: "Issue rejected by Admin",
+            updatedBy: "Admin",
+          };
+          await timelinesCollection.insertOne(timelineInfo);
+        }
+
+        const result = await issuesCollection.updateOne(query, { $set: updateInfo });
+        res.send(result);
+      } catch (err) {
+        res.send({ err });
       }
-      if (updateInfo.status && updateInfo.status === "resolved") {
-        updateInfo.resolvedAt = new Date();
-      }
-      updateInfo.updatedAt = new Date();
-      const update = {
-        $set: updateInfo,
-      };
-      const result = await issuesCollection.updateOne(query, update);
-      res.send(result);
     });
 
     app.delete("/issues/:id", async (req, res) => {
