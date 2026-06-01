@@ -346,11 +346,21 @@ async function run() {
         updateInfo.image = issue.image;
       }
 
-      if (updateInfo.status && updateInfo.status === "resolved") {
-        updateInfo.resolvedAt = new Date();
-        const { resolvedTasks, email } = (await staffsCollection.findOne({ email: issue.assignedStaff.email })) || {};
-        const update = { resolvedTasks: (resolvedTasks || 0) + 1 };
-        await staffsCollection.updateOne({ email }, { $set: update });
+      if (updateInfo.status) {
+        if (updateInfo.status === "resolved") {
+          updateInfo.resolvedAt = new Date();
+          const { resolvedTasks, email } = (await staffsCollection.findOne({ email: issue.assignedStaff.email })) || {};
+          const update = { resolvedTasks: (resolvedTasks || 0) + 1 };
+          await staffsCollection.updateOne({ email }, { $set: update });
+        } else {
+          // add timelime activity against issue
+          const timelineInfo = {
+            issueId: issue._id,
+            message: `Issue status updated from ${issue.statys} to ${updateInfo.status}`,
+            updatedBy: `Staff: ${issue.assignedStaff.displayName}`,
+          };
+          await timelinesCollection.insertOne(timelineInfo);
+        }
       }
 
       updateInfo.updatedAt = new Date();
