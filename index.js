@@ -10,7 +10,7 @@ const admin = require("firebase-admin");
 // const decoded = Buffer.from(process.env.FB_SERVICE_KEY, "base64").toString("utf8");
 // const serviceAccount = JSON.parse(decoded);
 const serviceAccount = require("./city-care-firebase-adminsdk.json");
-const { issuesMatrics } = require("./utils");
+const { issuesMetrics } = require("./utils");
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
@@ -311,13 +311,13 @@ async function run() {
         },
       });
     });
-    app.get("/issues/matrics", async (req, res) => {
+    app.get("/issues/metrics", async (req, res) => {
       const cursor = issuesCollection.find();
       const result = await cursor.toArray();
-      const matrics = await issuesMatrics(result);
+      const metrics = await issuesMetrics(result);
 
-      console.log("mat", matrics);
-      res.send(matrics);
+      console.log("mat", metrics);
+      res.send(metrics);
     });
     app.get("/issues/:id", async (req, res) => {
       const id = req.params.id;
