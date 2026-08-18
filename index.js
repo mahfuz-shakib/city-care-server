@@ -3,7 +3,6 @@ const cors = require("cors");
 require("dotenv").config();
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const stripe = require("stripe")(process.env.STRIPE_SECRET);
-
 const port = process.env.PORT || 3000;
 
 // firebase  key
@@ -20,7 +19,6 @@ const app = express();
 app.use(express.json());
 
 const allowedOrigins = ["http://localhost:5173", "http://localhost:3000", "https://city-care0.netlify.app"];
-
 // ✅ MUST be before routes
 app.use(
   cors({
@@ -37,19 +35,22 @@ app.use(
   }),
 );
 
+// middlware
 // token verify
 const verifyFBToken = async (req, res, next) => {
-  const tokenData = req.headers.authorization;
-  console.log(tokenData);
-
-  if (!tokenData) {
+  if (req?.originalUrl.startsWith("/issues/?") && !req.query.email) {
+    next();
+    return;
+  }
+  if (!req.headers || !req.headers.authorization) {
     return res.status(401).send({ message: "unauthorized access" });
   }
-
+  const token = req.headers.authorization?.split(" ")[1];
+  if (!token) {
+    return res.status(401).send({ message: "unauthorized access" });
+  }
   try {
-    const token = tokenData?.split(" ")[1];
     const decoded = await admin.auth().verifyIdToken(token);
-    console.log("decoded in the token", decoded);
     req.decoded_email = decoded.email;
     next();
   } catch (err) {
@@ -58,7 +59,6 @@ const verifyFBToken = async (req, res, next) => {
 };
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.pr7icaj.mongodb.net/?appName=Cluster0`;
-
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
   serverApi: {
@@ -81,41 +81,46 @@ async function run() {
     const timelinesCollection = cityCare.collection("timelines");
     const paymentsCollection = cityCare.collection("payments");
 
-    // admin verification
-    const verifyAdmin = async (req, res, next) => {
-      const email = req.decoded_email;
-      const query = { email };
-      const user = await usersCollection.findOne(query);
-      if (!user || user.role !== "admin") {
+    // this ensures that: ami sudhu e amr data access korte parbo /// only admin sob parbe
+    const verifyValidUser = async (req, res, next) => {
+      const loggedUser = await usersCollection.findOne({ email: req.decoded_email });
+      if (loggedUser && loggedUser?.role === "admin") {
+        next();
+        return;
+      }
+
+      const params = req?.params || null;
+      let email, user;
+      if (params) {
+        if (loggedUser && params.userId) user = await usersCollection.findOne({ _id: new ObjectId(params.userId) });
+        else user = await staffsCollection.findOne({ _id: new ObjectId(params.staffId) });
+      }
+      email = req.query.email || req.body.email || user?.email;
+      if (email && email !== req.decoded_email) {
         return res.status(403).send({ message: "forbidden access" });
       }
       next();
     };
 
-    // staff verification
-    const verifyStaff = async (req, res, next) => {
+    /*******************************/
+    //     role check api (single call, no verifyValidUser needed)
+    /*******************************/
+    app.get("/role", verifyFBToken, async (req, res) => {
       const email = req.decoded_email;
-      const staff = await staffsCollection.findOne({ email });
-      if (!staff) {
-        return res.status(403).send({ message: "forbidden access - staff only" });
-      }
-      next();
-    };
-
-    // citizen verification
-    const verifyCitizen = async (req, res, next) => {
-      const email = req.decoded_email;
-      const user = await usersCollection.findOne({ email });
-      if (!user || user.role !== "citizen") {
-        return res.status(403).send({ message: "forbidden access - citizen only" });
-      }
-      next();
-    };
+      // Check users collection first (citizen / admin)
+      const user = await usersCollection.findOne({ email }, { projection: { role: 1 } });
+      if (user) return res.send({ role: user.role || "citizen" });
+      // Not in users → check staffs collection
+      const staff = await staffsCollection.findOne({ email }, { projection: { role: 1 } });
+      if (staff) return res.send({ role: "staff" });
+      // Unknown — treat as citizen so the app doesn't crash
+      return res.send({ role: "citizen" });
+    });
 
     /*******************************/
     //     user related api
     /*******************************/
-    app.get("/users", async (req, res) => {
+    app.get("/users", verifyFBToken, verifyValidUser, async (req, res) => {
       const email = req.query.email;
       const role = req.query.role;
       const query = {};
@@ -129,15 +134,14 @@ async function run() {
       const result = await cursor.toArray();
       res.send(result);
     });
-    app.get("/users/:userId", async (req, res) => {
+    // maybe this api is not used but not sure
+    app.get("/users/:userId", verifyFBToken, verifyValidUser, async (req, res) => {
       const id = req.params.userId;
       const query = { _id: new ObjectId(id) };
       const result = await usersCollection.findOne(query);
       res.send(result);
     });
-    app.post("/users", async (req, res) => {
-      const token = req.headers.authorization;
-
+    app.post("/users", verifyFBToken, async (req, res) => {
       const newUser = req.body;
       const userExisting = await usersCollection.findOne({ email: newUser.email });
       const staffExisting = await staffsCollection.findOne({ email: newUser.email });
@@ -155,7 +159,7 @@ async function run() {
         res.send({ currentUser: result });
       }
     });
-    app.patch("/users/:userId", async (req, res) => {
+    app.patch("/users/:userId", verifyFBToken, verifyValidUser, async (req, res) => {
       const id = req.params.userId;
       const updateInfo = req.body;
       const query = { _id: new ObjectId(id) };
@@ -166,7 +170,7 @@ async function run() {
       const result = await usersCollection.updateOne(query, update, option);
       res.send(result);
     });
-    app.delete("/users/:userId", async (req, res) => {
+    app.delete("/users/:userId", verifyFBToken, verifyValidUser, async (req, res) => {
       const id = req.params.userId;
       const query = { _id: new ObjectId(id) };
       const result = await usersCollection.deleteOne(query);
@@ -176,7 +180,7 @@ async function run() {
     /*******************************/
     //     staff related api
     /*******************************/
-    app.get("/staffs", async (req, res) => {
+    app.get("/staffs", verifyFBToken, verifyValidUser, async (req, res) => {
       const { email, department, page, limit } = req.query;
       const query = {};
       if (email) {
@@ -202,13 +206,13 @@ async function run() {
         },
       });
     });
-    app.get("/staffs/:staffId", async (req, res) => {
+    app.get("/staffs/:staffId", verifyFBToken, verifyValidUser, async (req, res) => {
       const id = req.params.staffId;
       const query = { _id: new ObjectId(id) };
       const result = await staffsCollection.findOne(query);
       res.send(result);
     });
-    app.post("/staffs", async (req, res) => {
+    app.post("/staffs", verifyFBToken, verifyValidUser, async (req, res) => {
       const { displayName, email, password, photoURL, department } = (newStaff = req.body);
       const userExisting = await usersCollection.findOne({ email });
       const isExisting = await staffsCollection.findOne({ email });
@@ -235,7 +239,7 @@ async function run() {
         res.send({ error, message: "Staff creation failed." });
       }
     });
-    app.patch("/staffs/:staffId", async (req, res) => {
+    app.patch("/staffs/:staffId", verifyFBToken, verifyValidUser, async (req, res) => {
       const id = req.params.staffId;
       const updateInfo = req.body;
       const query = { _id: new ObjectId(id) };
@@ -246,7 +250,7 @@ async function run() {
       const result = await staffsCollection.updateOne(query, update, option);
       res.send(result);
     });
-    app.delete("/staffs/:staffId", async (req, res) => {
+    app.delete("/staffs/:staffId", verifyFBToken, verifyValidUser, async (req, res) => {
       const id = req.params.staffId;
       const query = { _id: new ObjectId(id) };
       const result = await staffsCollection.deleteOne(query);
@@ -256,7 +260,7 @@ async function run() {
     /*******************************/
     //     issue related api
     /*******************************/
-    app.get("/issues", async (req, res) => {
+    app.get("/issues", verifyFBToken, async (req, res) => {
       const { email, category, status, priority, search, staffEmail, page, limit } = req.query;
       const query = {};
       if (email) {
@@ -314,7 +318,7 @@ async function run() {
       res.send(result);
     });
 
-    app.post("/issues", async (req, res) => {
+    app.post("/issues", verifyFBToken, async (req, res) => {
       const issue = req.body;
       issue.priority = "normal";
       issue.status = "pending";
@@ -336,7 +340,7 @@ async function run() {
       res.send(result);
     });
 
-    app.patch("/issues/:id", async (req, res) => {
+    app.patch("/issues/:id", verifyFBToken, async (req, res) => {
       const id = req.params.id;
       const updateInfo = req.body;
       const query = { _id: new ObjectId(id) };
@@ -352,22 +356,21 @@ async function run() {
           const { resolvedTasks, email } = (await staffsCollection.findOne({ email: issue.assignedStaff.email })) || {};
           const update = { resolvedTasks: (resolvedTasks || 0) + 1 };
           await staffsCollection.updateOne({ email }, { $set: update });
-        } else {
-          // add timelime activity against issue
-          const timelineInfo = {
-            issueId: issue._id,
-            message: `Issue status updated from ${issue.statys} to ${updateInfo.status}`,
-            updatedBy: `Staff: ${issue.assignedStaff.displayName}`,
-          };
-          await timelinesCollection.insertOne(timelineInfo);
         }
+        // add timelime activity to the issue
+        const timelineInfo = {
+          issueId: issue._id,
+          message: `Issue status updated from ${issue.status} to ${updateInfo.status}`,
+          updatedBy: `Staff: ${issue.assignedStaff.displayName}`,
+        };
+        await timelinesCollection.insertOne(timelineInfo);
       }
 
       updateInfo.updatedAt = new Date();
       const result = await issuesCollection.updateOne(query, { $set: updateInfo });
       res.send(result);
     });
-    app.patch("/issues/admin/:id", async (req, res) => {
+    app.patch("/issues/admin/:id", verifyFBToken, async (req, res) => {
       const id = req.params.id;
       const { status, staffEmail } = req.body;
       const query = { _id: new ObjectId(id) };
@@ -415,7 +418,7 @@ async function run() {
       }
     });
 
-    app.delete("/issues/:id", async (req, res) => {
+    app.delete("/issues/:id", verifyFBToken, async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await issuesCollection.deleteOne(query);
