@@ -155,7 +155,7 @@ async function run() {
         newUser.freeReport = 3;
         newUser.reports = 0;
         newUser.solved = 0;
-        newUser.createUser = new Date();
+        newUser.createAt = new Date();
         const result = await usersCollection.insertOne(newUser);
         res.send({ currentUser: result });
       }
@@ -182,13 +182,20 @@ async function run() {
     //     staff related api
     /*******************************/
     app.get("/staffs", verifyFBToken, verifyValidUser, async (req, res) => {
-      const { email, department, page, limit } = req.query;
+      const { email, department, search, page, limit } = req.query;
       const query = {};
       if (email) {
         query.email = email;
       }
       if (department && department !== "All Staff") {
         query.department = department;
+      }
+      if (search) {
+        query.$or = [
+          { displayName: { $regex: search, $options: "i" } },
+          { email: { $regex: search, $options: "i" } },
+          { department: { $regex: search, $options: "i" } },
+        ];
       }
 
       const limitNum = Number(limit) || 8;
@@ -233,6 +240,7 @@ async function run() {
           newStaff.activeTasks = 0;
           newStaff.resolvedTasks = 0;
           newStaff.createdAt = new Date();
+          newStaff.averageDays = 0;
           const result = await staffsCollection.insertOne(newStaff);
           res.send({ currentStaff: result });
         }
@@ -268,7 +276,15 @@ async function run() {
         query.reporter = email;
       }
       if (category) {
-        query.category = category;
+        const legacyCategories = {
+          infrastructure: ["infrastructure", "water", "electricity"],
+          "public safety": ["public safety", "safety"],
+          environment: ["environment"],
+          sanitation: ["sanitation", "garbage", "waste"],
+          transport: ["transport", "road"],
+          construction: ["construction"],
+        };
+        query.category = { $in: legacyCategories[category] || [category] };
       }
       if (status) {
         query.status = status;
@@ -314,10 +330,35 @@ async function run() {
     app.get("/issues/metrics", async (req, res) => {
       const cursor = issuesCollection.find();
       const result = await cursor.toArray();
-      const metrics = await issuesMetrics(result);
+      const metrics = issuesMetrics(result);
 
-      console.log("mat", metrics);
+      // console.log("mat", metrics);
       res.send(metrics);
+    });
+    app.get("/issues/map", async (req, res) => {
+      const category = req.query.category;
+      console.log(category);
+      const query = {};
+      if (category && category !== "all") {
+        const legacyCategories = {
+          infrastructure: ["infrastructure", "road", "water", "electricity"],
+          "public safety": ["public safety", "safety"],
+          environment: ["environment"],
+          sanitation: ["sanitation", "garbage", "waste"],
+          transport: ["transport"],
+          construction: ["construction"],
+        };
+        query.category = { $in: legacyCategories[category] || [category] };
+      }
+      console.log(query);
+      const cursor = issuesCollection
+        .find(query)
+        .project({ title: 1, image: 1, category: 1, status: 1, priority: 1, location: 1, position: 1 })
+        .limit(100)
+        .sort({ createdAt: -1 });
+      const result = await cursor.toArray();
+      console.log(result);
+      res.send(result);
     });
     app.get("/issues/:id", async (req, res) => {
       const id = req.params.id;
@@ -341,7 +382,7 @@ async function run() {
       if (issue.reporter) {
         const user = await usersCollection.findOne({ email: issue.reporter });
         if (user && !user.isPremium && user.freeReport > 0) {
-          await usersCollection.updateOne({ email: issue.reporter }, { $inc: { freeReport: -1 } });
+          await usersCollection.updateOne({ email: issue.reporter }, { $inc: { freeReport: -1, reports: 1 } });
         }
       }
 
@@ -360,10 +401,20 @@ async function run() {
 
       if (updateInfo.status) {
         if (updateInfo.status === "resolved") {
+          const staff = await staffsCollection.findOne({ email: issue.assignedStaff.email });
+          staff.resolution;
           updateInfo.resolvedAt = new Date();
-          const { resolvedTasks, email } = (await staffsCollection.findOne({ email: issue.assignedStaff.email })) || {};
-          const update = { resolvedTasks: (resolvedTasks || 0) + 1 };
-          await staffsCollection.updateOne({ email }, { $set: update });
+          // const { resolvedTasks, email } = (await staffsCollection.findOne({ email: issue.assignedStaff.email })) || {};
+          // const update = { resolvedTasks: (resolvedTasks || 0) + 1 };
+          const assignedAt = issue.staffAssignedAt;
+          const requiredTime = assignedAt ? (updateInfo.resolvedAt - new Date(assignedAt)) / (1000 * 60 * 60 * 24) : 0;
+          const avgDays =
+            ((staff.resolvedTasks || 0) * (staff.averageDays || 0) + requiredTime) / ((staff.resolvedTasks || 0) + 1);
+          await staffsCollection.updateOne(
+            { email: issue.assignedStaff.email },
+            { $inc: { resolvedTasks: 1 }, $set: { averageDays: Number(avgDays.toFixed(1)) } },
+          );
+          await usersCollection.updateOne({ email: issue.reporter }, { $inc: { solved: 1 } });
         }
         // add timelime activity to the issue
         const timelineInfo = {
@@ -384,7 +435,6 @@ async function run() {
       const query = { _id: new ObjectId(id) };
       const issue = await issuesCollection.findOne(query);
       const updateInfo = {};
-      // console.log("staff: ", staffEmail);
       try {
         if (staffEmail) {
           const staffInfo = await staffsCollection.findOne({ email: staffEmail });
@@ -394,11 +444,8 @@ async function run() {
             phone: staffInfo.phone,
           };
           // increase staff's assigned active task
-          const staffUpdate = {
-            activeTasks: (staffInfo.activeTasks || 0) + 1,
-          };
-          await staffsCollection.updateOne({ email: staffEmail }, { $set: staffUpdate });
-
+          await staffsCollection.updateOne({ email: staffEmail }, { $inc: { activeTasks: 1 } });
+          updateInfo.staffAssignedAt = new Date();
           // add timelime activity against issue
           const timelineInfo = {
             issueId: issue._id,
@@ -418,7 +465,6 @@ async function run() {
           };
           await timelinesCollection.insertOne(timelineInfo);
         }
-
         const result = await issuesCollection.updateOne(query, { $set: updateInfo });
         res.send(result);
       } catch (err) {

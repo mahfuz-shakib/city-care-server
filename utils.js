@@ -1,56 +1,23 @@
-// export const issuesMatrics = (issues) => {
-//   const today = new Date().toISOString();
-//   const cur = today.split("-").slice(0, 2);
-//   const currentMonth = cur.join("-");
-//   const prev = Number(cur[1]) - 1 == 0 ? 12 : Number(cur[1]) - 1;
-//   const preMonth = prev < 10 ? "0" + prev.toString() : prev.toString();
-//   const year = Number(cur[1]) - 1 == 0 ? Number(cur[0]) - 1 : cur[0];
-//   const previousMonth = year + "-" + preMonth;
-//   if (issues) {
-//     const resolvedIssues = issues.filter((i) => i.status === "resolved");
-//     const pendingIssues = issues.filter((i) => i.status === "pending");
-//     const pmi = resolvedIssues?.filter((i) => i.resolvedAt.toISOString().includes(previousMonth));
-//     const cmi = resolvedIssues?.filter((i) => i.resolvedAt.toISOString().includes(currentMonth));
-//     const prevRes = pmi?.reduce((acc, curr) => {
-//       const diff = (new Date(curr.resolvedAt) - new Date(curr.createdAt)) / (1000 * 60 * 60 * 24);
-//       console.log("reduce ", diff, acc + diff);
-//       return acc + diff;
-//     }, 0);
-//     const currRes = cmi?.reduce((acc, curr) => {
-//       const diff = (new Date(curr.resolvedAt) - new Date(curr.createdAt)) / (1000 * 60 * 60 * 24);
-//       return acc + diff;
-//     }, 0);
-//     return {
-//       allSize: issues.length,
-//       resolvedSize: resolvedIssues.length,
-//       pendingSize: pendingIssues.length,
-//       prevMonthSize: pmi.length,
-//       currMonthSize: cmi.length,
-//       prevMonthReso: prevRes,
-//       currMonthReso: currRes,
-//     };
-//   }
-// };
-
-// utils.js
-
 export const issuesMetrics = (issues) => {
   if (!issues || !Array.isArray(issues)) {
     return null;
   }
-
   const resolvedIssues = issues.filter((issue) => issue.status === "resolved");
   const pendingIssues = issues.filter((issue) => issue.status === "pending");
+  const resolutionTimes = resolvedIssues
+    .filter((issue) => issue.createdAt && issue.resolvedAt)
+    .map((issue) => (new Date(issue.resolvedAt) - new Date(issue.createdAt)) / (1000 * 60 * 60 * 24));
+  const overallAverageResolution = resolutionTimes.length
+    ? Number((resolutionTimes.reduce((total, days) => total + days, 0) / resolutionTimes.length).toFixed(1))
+    : null;
 
-  // Generate last 6 months
-  // Current month included
-
+  // Generate last 6 months & Current month included
   const today = new Date();
   const months = [];
 
   for (let i = 5; i >= 0; i--) {
     const date = new Date(today.getFullYear(), today.getMonth() - i, 1);
-
+    console.log(date);
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, "0");
 
@@ -72,7 +39,11 @@ export const issuesMetrics = (issues) => {
 
       return issue.resolvedAt.toISOString().startsWith(key);
     });
+    const reportedCount = issues.filter((issue) => {
+      if (!issue.createdAt) return false;
 
+      return issue.createdAt.toISOString().startsWith(key);
+    }).length;
     // Total resolution time
     const totalResolutionDays = monthIssues.reduce((total, issue) => {
       if (!issue.createdAt || !issue.resolvedAt) {
@@ -92,6 +63,7 @@ export const issuesMetrics = (issues) => {
         month: "short",
       }),
       monthKey: key,
+      reportedCount,
       resolvedCount: monthIssues.length,
       averageResolution: averageResolution !== null ? Number(averageResolution.toFixed(1)) : null,
     };
@@ -125,12 +97,48 @@ export const issuesMetrics = (issues) => {
       resolutionChangePercent: Number(change.toFixed(1)),
     };
   });
+  const categoryAliases = {
+    road: "transport",
+    water: "infrastructure",
+    electricity: "infrastructure",
+    garbage: "sanitation",
+    waste: "sanitation",
+    safety: "public safety",
+  };
+  const categoryNames = ["infrastructure", "public safety", "environment", "sanitation", "transport", "construction"];
+  const categoryCounts = Object.fromEntries(
+    categoryNames.map((category) => [category, { reportedCount: 0, resolvedCount: 0, pendingCount: 0 }]),
+  );
+
+  issues.forEach((issue) => {
+    const rawCategory = String(issue.category || "").toLowerCase();
+    const category = categoryAliases[rawCategory] || rawCategory;
+    if (!categoryCounts[category]) return;
+
+    categoryCounts[category].reportedCount += 1;
+    if (issue.status === "resolved" || issue.status === "closed") categoryCounts[category].resolvedCount += 1;
+    if (issue.status === "pending") categoryCounts[category].pendingCount += 1;
+  });
+
+  const categoryStatistics = categoryNames.map((category) => {
+    const counts = categoryCounts[category];
+    return {
+      category,
+      ...counts,
+      resolutionRate: counts.reportedCount
+        ? Number(((counts.resolvedCount / counts.reportedCount) * 100).toFixed(1))
+        : 0,
+    };
+  });
 
   return {
     // Overall statistics
     allSize: issues.length,
     resolvedSize: resolvedIssues.length,
     pendingSize: pendingIssues.length,
+    overallAverageResolution,
+    resolutionRate: issues.length ? Number(((resolvedIssues.length / issues.length) * 100).toFixed(1)) : 0,
+    categoryStatistics,
     // Last 6 months resolution data
     resolutionPerformance: performanceWithChange,
   };
