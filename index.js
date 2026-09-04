@@ -572,7 +572,6 @@ async function run() {
     });
     app.post("/subscription-payment-session", async (req, res) => {
       const userInfo = req.body;
-      console.log("subs: ", userInfo);
       const session = await stripe.checkout.sessions.create({
         line_items: [
           {
@@ -696,9 +695,7 @@ async function run() {
         if (userId) {
           query.userId = userId;
         }
-        console.log("payments: ", query);
         const payments = await paymentsCollection.find(query).sort({ createdAt: -1 }).toArray();
-        console.log(payments);
         res.send(payments);
       } catch (error) {
         console.error("Error retrieving payments:", error);
