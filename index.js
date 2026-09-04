@@ -39,6 +39,7 @@ app.use(
 // middlware
 // token verify
 const verifyFBToken = async (req, res, next) => {
+  // console.log(req.query);
   if (req?.originalUrl.startsWith("/issues/?") && !req.query.email) {
     next();
     return;
@@ -116,6 +117,16 @@ async function run() {
       if (staff) return res.send({ role: "staff" });
       // Unknown — treat as citizen so the app doesn't crash
       return res.send({ role: "citizen" });
+    });
+    app.get("/getMyInfo/:email", async (req, res) => {
+      const email = req.decoded_email || req.params.email;
+      // Check users collection first (citizen / admin)
+      const user = await usersCollection.findOne({ email });
+      if (user) return res.send(user);
+      // Not in users → check staffs collection
+      const staff = await staffsCollection.findOne({ email });
+      if (staff) return res.send(staff);
+      // Unknown — treat as citizen so the app doesn't crash
     });
 
     /*******************************/
@@ -224,7 +235,6 @@ async function run() {
       const { displayName, email, password, photoURL, department } = (newStaff = req.body);
       const userExisting = await usersCollection.findOne({ email });
       const isExisting = await staffsCollection.findOne({ email });
-      console.log(newStaff, userExisting, isExisting);
       try {
         if (userExisting || isExisting) {
           res.send({ message: "user already exist. Do not needed create again", currentStaff: isExisting });
@@ -337,7 +347,6 @@ async function run() {
     });
     app.get("/issues/map", async (req, res) => {
       const category = req.query.category;
-      console.log(category);
       const query = {};
       if (category && category !== "all") {
         const legacyCategories = {
@@ -350,14 +359,12 @@ async function run() {
         };
         query.category = { $in: legacyCategories[category] || [category] };
       }
-      console.log(query);
       const cursor = issuesCollection
         .find(query)
         .project({ title: 1, image: 1, category: 1, status: 1, priority: 1, location: 1, position: 1 })
         .limit(100)
         .sort({ createdAt: -1 });
       const result = await cursor.toArray();
-      console.log(result);
       res.send(result);
     });
     app.get("/issues/:id", async (req, res) => {
@@ -657,7 +664,6 @@ async function run() {
                 const userQuery = { _id: new ObjectId(userId) };
                 const userUpdate = { $set: { isPremium: true, updatedAt: new Date() } };
                 const res = await usersCollection.updateOne(userQuery, userUpdate);
-                console.log(userQuery, res);
               }
             }
           } catch (err) {
