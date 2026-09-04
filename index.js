@@ -7,9 +7,9 @@ const port = process.env.PORT || 3000;
 
 // firebase  key
 const admin = require("firebase-admin");
-// const decoded = Buffer.from(process.env.FB_SERVICE_KEY, "base64").toString("utf8");
-// const serviceAccount = JSON.parse(decoded);
-const serviceAccount = require("./city-care-firebase-adminsdk.json");
+const decoded = Buffer.from(process.env.FB_SERVICE_KEY, "base64").toString("utf8");
+const serviceAccount = JSON.parse(decoded);
+// const serviceAccount = require("./city-care-firebase-adminsdk.json");
 const { issuesMetrics } = require("./utils");
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
@@ -142,7 +142,7 @@ async function run() {
       const result = await usersCollection.findOne(query);
       res.send(result);
     });
-    app.post("/users", verifyFBToken, async (req, res) => {
+    app.post("/users", async (req, res) => {
       const newUser = req.body;
       const userExisting = await usersCollection.findOne({ email: newUser.email });
       const staffExisting = await staffsCollection.findOne({ email: newUser.email });
